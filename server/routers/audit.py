@@ -9,7 +9,7 @@ try:
     from config import settings
     from models import Server, User
     from core.database import get_db
-    from core.security import get_current_user, require_user
+    from core.security import get_current_user, require_user, filter_servers_for_user
     from core.templates import tpl
     from services.audit_service import (
         AUDIT_ACTION_LABELS,
@@ -21,7 +21,7 @@ except ImportError:
     from server.config import settings
     from server.models import Server, User
     from server.core.database import get_db
-    from server.core.security import get_current_user, require_user
+    from server.core.security import get_current_user, require_user, filter_servers_for_user
     from server.core.templates import tpl
     from server.services.audit_service import (
         AUDIT_ACTION_LABELS,
@@ -167,7 +167,11 @@ def audit_page(
         available_users.append(user_clean)
         available_users.sort()
 
-    all_servers = db.query(Server).order_by(Server.hostname).all()
+    if user_actor.allowed_server_ids is not None:
+        allowed_ids = set(user_actor.get_allowed_server_ids())
+        rows = [r for r in rows if r.get("server_id") is None or r.get("server_id") in allowed_ids]
+
+    all_servers = filter_servers_for_user(db.query(Server), user_actor).order_by(Server.hostname).all()
 
     st_cls = {
         "SUCCESS": "up",

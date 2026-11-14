@@ -13,6 +13,7 @@ try:
     from core.security import (
         get_current_user,
         _verify_csrf_header,
+        filter_servers_for_user,
     )
     from core.templates import tpl
     from core.utils import _parse_iso_datetime
@@ -41,7 +42,7 @@ def maintenance_page(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    servers_list = db.query(Server).order_by(Server.hostname).all()
+    servers_list = filter_servers_for_user(db.query(Server), user).order_by(Server.hostname).all()
     servers_data = [
         {"id": s.id, "hostname": s.hostname, "ip_address": s.ip_address, "group_name": s.group_name}
         for s in servers_list

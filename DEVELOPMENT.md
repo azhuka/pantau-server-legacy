@@ -354,6 +354,16 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.8.221
+
+### v4.8.221 (15 Nov 2026) - Sinkronisasi Render Dasbor & Penegakan Cakupan Server Operator
+- **Fix Flash Dual-Render Dasbor:** Mengeliminasi bug tampilan sesaat seluruh server pada akun operator dengan menerapkan `filter_servers_for_user` pada query awal `servers` di `server/routers/dashboard.py` (`dashboard()`), sehingga HTML awal Jinja dan polling AJAX sinkron sempurna tanpa jeda desinkronisasi.
+- **Isolasi Peringatan & Insiden:** Menyaring daftar masalah terbuka, MTTR, dan audio/banner alerts pada `/api/alerts` dan `/api/problems` agar hanya menampilkan insiden dari server yang diizinkan bagi pengguna.
+- **Proteksi Aksi Insiden:** Menambahkan validasi izin kepemilikan server pada endpoint tindakan insiden (`ack`, `resolve`, `ignore`, `unignore`).
+- **Parsing Cakupan Server Fleksibel:** Menyempurnakan `User.get_allowed_server_ids()` di `server/models.py` untuk mendukung format JSON list string, format koma, dan penanganan list kosong (`[]`).
+- **Sinkronisasi Modul Terkait:** Menerapkan `filter_servers_for_user` pada modul Audit (`audit.py`), Maintenance (`maintenance.py`), dan Probing (`probes.py`).
+
+
 ## Versi 4.8.220
 
 ### v4.8.220 - 2026-11-15

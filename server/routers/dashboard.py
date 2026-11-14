@@ -16,7 +16,12 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from core.database import get_db
-from core.security import get_current_user, require_user, _verify_csrf_header
+from core.security import (
+    get_current_user,
+    require_user,
+    _verify_csrf_header,
+    filter_servers_for_user,
+)
 from core.templates import tpl
 from core.utils import _clean_str, _fmt_dt, _fmt_short_dt, _is_agent_outdated
 from models import (
@@ -79,7 +84,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    servers = db.query(Server).order_by(desc(Server.last_seen)).all()
+    servers = filter_servers_for_user(db.query(Server), user).order_by(desc(Server.last_seen)).all()
     total = len(servers)
     up_count = 0
     down_services = 0
@@ -470,7 +475,12 @@ def problems_page(request: Request, db: Session = Depends(get_db)):
             open_problems = [p for p in open_problems if (p.get("group_name") or "") == filter_group]
             recent_resolved = [p for p in recent_resolved if (p.get("group_name") or "") == filter_group]
 
-    all_servers = db.query(Server).order_by(Server.hostname).all()
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        open_problems = [p for p in open_problems if p.get("server_id") is None or p.get("server_id") in allowed_ids]
+        recent_resolved = [p for p in recent_resolved if p.get("server_id") is None or p.get("server_id") in allowed_ids]
+
+    all_servers = filter_servers_for_user(db.query(Server), user).order_by(Server.hostname).all()
     servers_total = len(all_servers)
     active_open_servers = {p["server_id"] for p in open_problems if not p.get("is_ignored")}
     existing_groups, existing_tags = get_existing_groups_and_tags(db)
@@ -541,7 +551,7 @@ def api_alerts(
 ):
     """Insiden terbuka lintas semua tingkat keparahan (danger, average, warning, info)."""
     now = datetime.utcnow()
-    servers_list = db.query(Server).all()
+    servers_list = filter_servers_for_user(db.query(Server), user).all()
     # Pastikan server offline/stale langsung tersinkronisasi tanpa jeda background loop
     stale_servers = [
         s for s in servers_list if getattr(s, "is_active", 1) and s.last_seen is not None and _server_stale(s)
@@ -585,6 +595,9 @@ def api_alerts(
         .order_by(desc(ServerProblem.started_at))
         .all()
     )
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        open_problems = [r for r in open_problems if r.server_id is None or r.server_id in allowed_ids]
 
     open_danger = [r for r in open_problems if r.severity == "danger" and get_effective_tier(r) == 1]
     open_average = [r for r in open_problems if r.severity == "average" and get_effective_tier(r) == 1]
@@ -793,10 +806,15 @@ def api_problems(
             p["ignored_until"] = _fmt_dt(p["ignored_until"], with_sec=True)
         return p
 
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        open_problems = [p for p in open_problems if p.get("server_id") is None or p.get("server_id") in allowed_ids]
+        recent_resolved = [p for p in recent_resolved if p.get("server_id") is None or p.get("server_id") in allowed_ids]
+
     open_serialized = [_serialize(p) for p in open_problems]
     resolved_serialized = [_serialize(p) for p in recent_resolved]
 
-    servers_total = db.query(Server).count()
+    servers_total = filter_servers_for_user(db.query(Server), user).count()
     active_open_servers = {p["server_id"] for p in open_problems if not p.get("is_ignored")}
 
     res_durations = []
@@ -854,6 +872,8 @@ def api_alert_ack(
     ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Insiden tidak ditemukan")
+    if row.server_id and not user.can_access_server(row.server_id):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini")
     row.acknowledged_at = datetime.utcnow()
     row.acknowledged_by = user.username
     _audit(
@@ -889,6 +909,8 @@ def api_alert_resolve(
     ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Insiden tidak ditemukan")
+    if row.server_id and not user.can_access_server(row.server_id):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini")
     now = datetime.utcnow()
     row.resolved_at = now
     row.resolved_note = _clean_str(f"manual ({user.username})", "manual", 100)
@@ -928,6 +950,8 @@ def api_alert_ignore(
     ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Insiden tidak ditemukan")
+    if row.server_id and not user.can_access_server(row.server_id):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini")
 
     duration = str(body.get("duration", "24h")).lower().strip()
     reason = str(body.get("reason", "")).strip()[:255] or None
@@ -1020,6 +1044,8 @@ def api_alert_unignore(
     ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Insiden tidak ditemukan")
+    if row.server_id and not user.can_access_server(row.server_id):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini")
 
     # Bersihkan seluruh riwayat pengabaian pada masalah ini dan key terkait di server ini
     db.query(ServerProblem).filter(

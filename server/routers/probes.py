@@ -15,7 +15,7 @@ try:
     from models import ProbeLog, ProbeTarget, Server, ServerProblem, User
     from prober import execute_probe, record_probe_execution
     from core.database import SessionLocal, get_db
-    from core.security import get_current_user, require_user, _verify_csrf_header
+    from core.security import get_current_user, require_user, _verify_csrf_header, filter_servers_for_user
     from core.templates import tpl
     from core.utils import _fmt_short_dt
     from services.audit_service import _audit
@@ -23,7 +23,7 @@ except ImportError:
     from server.models import ProbeLog, ProbeTarget, Server, ServerProblem, User
     from server.prober import execute_probe, record_probe_execution
     from server.core.database import SessionLocal, get_db
-    from server.core.security import get_current_user, require_user, _verify_csrf_header
+    from server.core.security import get_current_user, require_user, _verify_csrf_header, filter_servers_for_user
     from server.core.templates import tpl
     from server.core.utils import _fmt_short_dt
     from server.services.audit_service import _audit
@@ -51,7 +51,7 @@ def probing_page(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    servers_list = db.query(Server).order_by(Server.hostname).all()
+    servers_list = filter_servers_for_user(db.query(Server), user).order_by(Server.hostname).all()
     servers_data = [{"id": s.id, "hostname": s.hostname, "ip_address": s.ip_address} for s in servers_list]
 
     return tpl(

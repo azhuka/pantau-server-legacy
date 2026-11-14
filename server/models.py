@@ -96,15 +96,21 @@ class User(Base):
         """Mengembalikan list ID server yang diizinkan, atau None jika akses global (seluruh armada server)."""
         if self.is_master_admin():
             return None
-        if not self.allowed_server_ids:
+        if self.allowed_server_ids is None:
             return None
+        raw = str(self.allowed_server_ids).strip()
+        if not raw or raw == "[]":
+            return []
         try:
-            parsed = json.loads(self.allowed_server_ids)
+            parsed = json.loads(raw)
             if isinstance(parsed, list):
                 return [int(x) for x in parsed]
         except Exception:
-            return None
-        return None
+            pass
+        try:
+            return [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
+        except Exception:
+            return []
 
     def can_access_server(self, server_id: int) -> bool:
         """Memeriksa apakah pengguna memiliki hak akses ke server dengan ID tertentu."""
