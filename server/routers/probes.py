@@ -749,6 +749,15 @@ async def api_probe_test_adhoc(
     if not target:
         raise HTTPException(status_code=400, detail="Target URL atau Host wajib diisi")
 
+    if user.allowed_server_ids is not None:
+        sid_raw = body.get("server_id")
+        sid = int(sid_raw) if sid_raw is not None and str(sid_raw).isdigit() else None
+        if not sid or not user.can_access_server(sid):
+            raise HTTPException(
+                status_code=403,
+                detail="Akses ditolak: Operator dengan cakupan server terbatas hanya dapat menguji probe untuk server dalam wewenang.",
+            )
+
     res = await execute_probe(body)
     return {
         "ok": True,

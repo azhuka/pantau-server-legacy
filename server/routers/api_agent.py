@@ -1543,6 +1543,8 @@ def api_logs_input(
     req = db.query(LogRequest).filter(LogRequest.id == rid).first()
     if not req:
         raise HTTPException(status_code=404, detail="Permintaan tidak ditemukan")
+    if not user.can_access_server(req.server_id):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini")
     if req.unit == SHELL_UNIT:
         if not user.has_perm("can_terminal"):
             raise HTTPException(status_code=403, detail="Akses ditolak: izin terminal diperlukan")
@@ -1852,6 +1854,8 @@ def api_logs_request(
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
+    if not user.can_access_server(sid):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini")
     if _server_stale(server):
         raise HTTPException(status_code=409, detail="Server sedang offline. Permintaan eksekusi atau log dinonaktifkan.")
     if not VALID_UNIT_RE.match(unit):
@@ -1952,6 +1956,8 @@ def api_logs_request_status(
     logreq = db.query(LogRequest).filter(LogRequest.id == rid).first()
     if not logreq:
         raise HTTPException(status_code=404, detail="Log request tidak ditemukan")
+    if not user.can_access_server(logreq.server_id):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini")
     server = db.query(Server.id).filter(Server.id == logreq.server_id).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")

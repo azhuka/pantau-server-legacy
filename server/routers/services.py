@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from core.database import get_db
 from core.security import (
+    assert_server_access,
     get_current_user,
     require_user,
     _verify_csrf_form,
@@ -748,6 +749,7 @@ def api_service_ignore(
     db: Session = Depends(get_db),
 ):
     """Abaikan pemantauan suatu service secara langsung (bisa permanen atau durasi)."""
+    assert_server_access(user, sid)
     _verify_csrf_header(request)
     if user.is_viewer() or not (user.is_master_admin() or user.has_perm("can_services")):
         raise HTTPException(status_code=403, detail="Akses ditolak: izin kontrol services diperlukan")
@@ -838,6 +840,7 @@ def api_service_unignore(
     db: Session = Depends(get_db),
 ):
     """Aktifkan kembali pemantauan suatu service."""
+    assert_server_access(user, sid)
     _verify_csrf_header(request)
     if user.is_viewer() or not (user.is_master_admin() or user.has_perm("can_services")):
         raise HTTPException(status_code=403, detail="Akses ditolak: izin kontrol services diperlukan")
@@ -887,6 +890,7 @@ def api_service_history(
     db: Session = Depends(get_db),
 ):
     """Riwayat metric service (status, koneksi, waktu respon) utk grafik service."""
+    assert_server_access(user, sid)
     svc = db.query(Service).filter(Service.id == svc_id, Service.server_id == sid).first()
     if not svc:
         raise HTTPException(status_code=404, detail="Service tidak ditemukan")

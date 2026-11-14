@@ -1,7 +1,7 @@
 """Audit logs and application dashboard logs router."""
 
 import os
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -79,6 +79,9 @@ def api_audit(
     db: Session = Depends(get_db),
 ):
     """Endpoint JSON audit untuk SPA."""
+    if not (user_actor.is_master_admin() or user_actor.has_perm("can_audit")):
+        raise HTTPException(status_code=403, detail="Akses ditolak: izin audit trail diperlukan")
+
     user_clean = user.strip()
     period_clean = period.strip().lower()
     server_id = int(server.strip()) if server.strip().isdigit() else None
@@ -94,6 +97,36 @@ def api_audit(
         server_id=server_id,
         status_filter=status_clean,
     )
+    if not user_actor.is_master_admin():
+        master_admin_names = {u.username for u in db.query(User).filter(User.role == "master_admin").all()}
+        for r in rows:
+            if r.get("user") in master_admin_names:
+                r["user"] = "Sistem"
+            target_str = str(r.get("target") or "")
+            for m in master_admin_names:
+                if m in target_str:
+                    target_str = target_str.replace(m, "Sistem")
+            if "master_admin" in target_str:
+                target_str = target_str.replace("master_admin", "sistem")
+            r["target"] = target_str
+
+        if user_clean in master_admin_names:
+            rows = []
+
+        available_users = [
+            u.username
+            for u in db.query(User).filter(~User.role.in_(["master_admin", "admin"])).order_by(User.username).all()
+        ]
+    else:
+        master_admin_names = set()
+        available_users = [u.username for u in db.query(User).order_by(User.username).all()]
+
+    if user_clean and user_clean not in available_users and (
+        user_actor.is_master_admin() or user_clean not in master_admin_names
+    ):
+        available_users.append(user_clean)
+        available_users.sort()
+
     if user_actor.allowed_server_ids is not None:
         allowed_ids = set(user_actor.get_allowed_server_ids())
         rows = [r for r in rows if r.get("server_id") is not None and r.get("server_id") in allowed_ids]
@@ -104,7 +137,6 @@ def api_audit(
         elif "created_at" in r:
             r["time_str"] = str(r["created_at"])
 
-    available_users = [u.username for u in db.query(User).order_by(User.username).all()]
     return {
         "rows": rows,
         "users": available_users,

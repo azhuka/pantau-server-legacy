@@ -336,4 +336,5 @@ def api_auth_me(request: Request, db: Session = Depends(get_db)):
         "role_display": "MASTER ADMIN" if user.role == "master_admin" else ("OPERATOR" if user.role == "operator" else "VIEWER"),
         "is_master_admin": getattr(user, "is_master_admin", lambda: False)(),
         "is_operator": getattr(user, "is_operator", lambda: False)(),
+        "allowed_server_ids": user.get_allowed_server_ids() if hasattr(user, "get_allowed_server_ids") else None,
     }

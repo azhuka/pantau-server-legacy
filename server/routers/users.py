@@ -512,6 +512,8 @@ def api_user_delete(
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
     if target.id == user.id:
         raise HTTPException(status_code=400, detail="Tidak dapat menghapus akun sendiri")
+    if target.is_master_admin():
+        raise HTTPException(status_code=403, detail="Akun Master Administrator tidak dapat dihapus")
     uname = target.username
     db.delete(target)
     db.commit()

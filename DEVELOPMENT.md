@@ -354,6 +354,11 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.3
+
+- **Security & RBAC**: Penegakan isolasi server scope pada file manager, service ops, probing, dan remote log requests.\n- **Paginasi**: Eliminasi alwaysShow: true pada tabel insiden resolved.
+
+
 ## Versi 4.11.2
 
 ### v4.11.2 (15 Nov 2026) - Pengembalian Menu Endpoint Permanen pada Bilah Navigasi

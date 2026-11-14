@@ -129,7 +129,9 @@ class FileManagerDispatcher:
 file_dispatcher = FileManagerDispatcher()
 
 
-def _get_active_online_server(db: Session, sid: int) -> Server:
+def _get_active_online_server(db: Session, sid: int, user: Optional[User] = None) -> Server:
+    if user is not None:
+        assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -290,7 +292,7 @@ async def api_server_files_ls(
     user: User = Depends(require_file_manager),
     db: Session = Depends(get_db),
 ):
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
     res = await file_dispatcher.dispatch(sid, "ls", {"path": path})
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("error", "Gagal membaca directory"))
@@ -304,7 +306,7 @@ async def api_server_files_cat(
     user: User = Depends(require_file_manager),
     db: Session = Depends(get_db),
 ):
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
     res = await file_dispatcher.dispatch(sid, "cat", {"path": path})
     if not res.get("ok"):
         raise HTTPException(
@@ -324,7 +326,7 @@ async def api_server_files_write(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     path = str(body.get("path", "")).strip()
     content = str(body.get("content", ""))
@@ -361,7 +363,7 @@ async def api_server_files_mkdir(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     path = str(body.get("path", "")).strip()
     mode = str(body.get("mode", "0755")).strip()
@@ -386,7 +388,7 @@ async def api_server_files_touch(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     path = str(body.get("path", "")).strip()
     if not path:
@@ -410,7 +412,7 @@ async def api_server_files_rm(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     path = str(body.get("path", "")).strip()
     if not path:
@@ -434,7 +436,7 @@ async def api_server_files_rename(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     old_path = str(body.get("old_path", "") or body.get("src", "")).strip()
     new_path = str(body.get("new_path", "") or body.get("dst", "")).strip()
@@ -466,7 +468,7 @@ async def api_server_files_chmod(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     path = str(body.get("path", "")).strip()
     mode = str(body.get("mode", "")).strip()
@@ -495,7 +497,7 @@ async def api_server_files_chown(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     path = str(body.get("path", "")).strip()
     owner = str(body.get("owner", "")).strip()
@@ -526,7 +528,7 @@ async def api_server_files_upload(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     raw = await file.read()
     if len(raw) > 50 * 1024 * 1024:
@@ -561,7 +563,7 @@ async def api_server_files_download(
     user: User = Depends(require_file_manager),
     db: Session = Depends(get_db),
 ):
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
     res = await file_dispatcher.dispatch(sid, "read_binary", {"path": path}, timeout=35.0)
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("error", "Gagal membaca file"))
@@ -593,7 +595,7 @@ async def api_server_files_copy(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     sources = body.get("sources", [])
     destination = str(body.get("destination", "")).strip()
@@ -627,7 +629,7 @@ async def api_server_files_move(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     sources = body.get("sources", [])
     destination = str(body.get("destination", "")).strip()
@@ -661,7 +663,7 @@ async def api_server_files_batch_rm(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     paths = body.get("paths", [])
     if not paths or not isinstance(paths, list):
@@ -692,7 +694,7 @@ async def api_server_files_batch_chmod(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    server = _get_active_online_server(db, sid)
+    server = _get_active_online_server(db, sid, user=user)
 
     paths = body.get("paths", [])
     mode = str(body.get("mode", "")).strip()
