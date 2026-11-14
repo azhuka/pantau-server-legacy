@@ -14,6 +14,7 @@ import os
 import secrets
 import time
 from urllib.parse import quote
+from typing import Optional
 
 from fastapi import (
     APIRouter,
