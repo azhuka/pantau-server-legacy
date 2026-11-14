@@ -354,6 +354,16 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.8.219
+
+### v4.8.219 - 2026-11-15
+- **Fitur Baru (Server Scope RBAC / Node Assignment):**
+  - Menambahkan kolom `allowed_server_ids` pada tabel `users` untuk menentukan daftar server yang didelegasikan kepada operator tertentu.
+  - Akun `master_admin` dan operator tanpa batasan scope secara default memegang wewenang **Global (Semua Server)** tanpa perubahan alur.
+  - Menyematkan pengamanan (*guard assertion*) pada endpoint Web Terminal (`/ws/servers/{sid}/terminal`), File Manager (`require_file_manager`), halaman rincian server (`/servers/{sid}`), dan API telemetri agar menolak akses `403 Forbidden` jika operator mengakses server di luar wewenangnya.
+  - Memperbarui antarmuka Manajemen Pengguna (`profile.html` tab pengguna) dengan komponen pemilihan Cakupan Server saat menambah atau mengedit akun staf.
+
+
 ## Versi 4.8.218
 
 ### v4.8.218 - 2026-11-14

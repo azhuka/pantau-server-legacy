@@ -24,6 +24,8 @@ from core.database import get_db
 from core.security import (
     get_current_user,
     require_user,
+    filter_servers_for_user,
+    assert_server_access,
     _verify_csrf_form,
     _verify_csrf_header,
     _verify_operator_password,
@@ -101,7 +103,7 @@ def servers_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    servers = db.query(Server).order_by(desc(Server.last_seen)).all()
+    servers = filter_servers_for_user(db.query(Server), user).order_by(desc(Server.last_seen)).all()
     extras_map = {ex.server_id: ex for ex in db.query(ServerExtras).all()}
     server_ids = [s.id for s in servers]
     svc_counts = (
@@ -299,6 +301,8 @@ def server_add_submit(
     user = get_current_user(request, db)
     if not user or not (user.is_master_admin() or user.has_perm("can_manage_servers")):
         return RedirectResponse("/", status_code=303)
+    if not user.can_access_server(sid):
+        return RedirectResponse("/servers", status_code=303)
     _verify_csrf_form(request, csrf_token)
     hostname = _clean_str(hostname, "", 255)
     ip_address = _clean_str(ip_address, "", 45)[:45]
@@ -408,6 +412,8 @@ def server_edit_page(request: Request, sid: int, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user or not (user.is_master_admin() or user.has_perm("can_manage_servers")):
         return RedirectResponse("/", status_code=303)
+    if not user.can_access_server(sid):
+        return RedirectResponse("/servers", status_code=303)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
         return RedirectResponse("/servers", status_code=303)
@@ -480,6 +486,8 @@ def server_edit_submit(
     user = get_current_user(request, db)
     if not user or not (user.is_master_admin() or user.has_perm("can_manage_servers")):
         return RedirectResponse("/", status_code=303)
+    if not user.can_access_server(sid):
+        return RedirectResponse("/servers", status_code=303)
     _verify_csrf_form(request, csrf_token)
     server = db.query(Server).filter(Server.id == sid).first()
     if server:
@@ -632,6 +640,8 @@ def server_delete(
     user = get_current_user(request, db)
     if not user or not (user.is_master_admin() or user.has_perm("can_manage_servers")):
         return RedirectResponse("/", status_code=303)
+    if not user.can_access_server(sid):
+        return RedirectResponse("/servers", status_code=303)
     _verify_csrf_form(request, csrf_token)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
@@ -716,6 +726,8 @@ def services_page(request: Request, sid: int, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if not user.can_access_server(sid):
+        return RedirectResponse("/servers", status_code=303)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
         return RedirectResponse("/servers", status_code=303)
@@ -1374,6 +1386,8 @@ def user_activity_page(request: Request, sid: int, username: str, db: Session = 
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if not user.can_access_server(sid):
+        return RedirectResponse("/servers", status_code=303)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
         return RedirectResponse("/servers", status_code=303)
@@ -1430,6 +1444,8 @@ def metrics_page(request: Request, sid: int, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if not user.can_access_server(sid):
+        return RedirectResponse("/servers", status_code=303)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
         return RedirectResponse("/servers", status_code=303)
@@ -1483,6 +1499,7 @@ def api_server_delete(
     """Penghapusan server via API JSON."""
     if not (user.is_master_admin() or user.has_perm("can_manage_servers")):
         raise HTTPException(status_code=403, detail="Akses ditolak: izin kelola server diperlukan")
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -1501,7 +1518,7 @@ def api_server_delete(
 
 @router.get("/api/servers")
 def api_servers(user: User = Depends(require_user), db: Session = Depends(get_db)):
-    servers = db.query(Server).order_by(desc(Server.last_seen)).all()
+    servers = filter_servers_for_user(db.query(Server), user).order_by(desc(Server.last_seen)).all()
     extras_map = {ex.server_id: ex for ex in db.query(ServerExtras).all()}
     result = []
     for srv in servers:
@@ -1707,6 +1724,7 @@ def api_servers(user: User = Depends(require_user), db: Session = Depends(get_db
 @router.get("/api/servers/{sid}/overview")
 def api_server_overview(sid: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """Ringkasan live (services + perintah terbaru) untuk polling UI halaman Services."""
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
@@ -2054,6 +2072,7 @@ def api_server_top_procs(sid: int, request: Request, db: Session = Depends(get_d
     user = get_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -2083,6 +2102,7 @@ async def api_server_maintenance(
             status_code=403,
             detail="Akses ditolak: Hanya admin atau operator berizin yang dapat mengatur mode pemeliharaan",
         )
+    assert_server_access(user, sid)
     _verify_csrf_header(request)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
@@ -2144,6 +2164,7 @@ async def api_server_notes(
             status_code=403,
             detail="Akses ditolak: Hanya admin atau operator berizin yang dapat mengedit catatan server",
         )
+    assert_server_access(user, sid)
     _verify_csrf_header(request)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server:
@@ -2174,6 +2195,7 @@ def api_server_perf(
     db: Session = Depends(get_db),
 ):
     """Riwayat kinerja sistem utk grafik: gabungan rollup per jam + snapshot mentalah."""
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -2311,6 +2333,7 @@ def api_server_system(
     db: Session = Depends(get_db),
 ):
     """Snapshot HW/jaringan terbaru + riwayat singkat + akun + unit services."""
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")

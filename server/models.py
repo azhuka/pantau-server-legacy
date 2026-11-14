@@ -31,6 +31,7 @@ class User(Base):
     totp_enabled = Column(SmallInteger, nullable=False, default=0)# 1=aktif, 0=nonaktif
     recovery_codes = Column(Text, nullable=True)                  # JSON list SHA-256 backup codes
     permissions = Column(Text, nullable=True)                     # JSON dict granular permissions (operator)
+    allowed_server_ids = Column(Text, nullable=True)              # JSON list[int] ID server yang diizinkan (NULL = Global/Semua Server)
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by = Column(String(100), nullable=True)               # Username pembuat akun (NULL = sistem/awal)
 
@@ -90,6 +91,34 @@ class User(Base):
         if perm == "can_manage_viewers" and perms.get("can_manage_users"):
             return True
         return bool(perms.get(perm, False))
+
+    def get_allowed_server_ids(self) -> list[int] | None:
+        """Mengembalikan list ID server yang diizinkan, atau None jika akses global (seluruh armada server)."""
+        if self.is_master_admin():
+            return None
+        if not self.allowed_server_ids:
+            return None
+        try:
+            parsed = json.loads(self.allowed_server_ids)
+            if isinstance(parsed, list):
+                return [int(x) for x in parsed]
+        except Exception:
+            return None
+        return None
+
+    def can_access_server(self, server_id: int) -> bool:
+        """Memeriksa apakah pengguna memiliki hak akses ke server dengan ID tertentu."""
+        if not self.is_active:
+            return False
+        if self.is_master_admin():
+            return True
+        allowed = self.get_allowed_server_ids()
+        if allowed is None:
+            return True  # Akses global (default untuk operator penuh / viewer global)
+        try:
+            return int(server_id) in allowed
+        except (ValueError, TypeError):
+            return False
 
 
 

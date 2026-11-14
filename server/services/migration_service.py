@@ -346,6 +346,25 @@ def migrate_fim_system() -> None:
             db.close()
 
 
+def migrate_user_server_scope() -> None:
+    """Migrasi penambahan kolom allowed_server_ids pada tabel users untuk pembatasan cakupan server."""
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("users")}
+    if "allowed_server_ids" not in existing:
+        db = SessionLocal()
+        try:
+            db.execute(text("ALTER TABLE users ADD COLUMN allowed_server_ids TEXT NULL DEFAULT NULL"))
+            db.commit()
+            logger.info("[startup] Kolom baru users: allowed_server_ids")
+        except Exception as exc:
+            db.rollback()
+            logger.warning("[startup] Migrasi kolom allowed_server_ids gagal: %s", exc)
+        finally:
+            db.close()
+
+
 def run_all_migrations() -> None:
     """Jalankan semua migrasi schema saat server startup."""
     migrate_server_groups_and_thresholds()
@@ -353,6 +372,7 @@ def run_all_migrations() -> None:
     migrate_server_problem_ignored()
     migrate_service_ignored()
     migrate_user_created_by()
+    migrate_user_server_scope()
     migrate_log_request_input()
     migrate_api_keys()
     migrate_probing_system()

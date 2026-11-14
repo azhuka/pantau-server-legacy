@@ -37,6 +37,7 @@ from core.security import (
     get_current_user,
     require_user,
     require_file_manager,
+    assert_server_access,
     _verify_csrf_header,
     _get_cached_server_id,
     get_file_manager_lease_remaining,
@@ -151,6 +152,7 @@ def page_server_files(request: Request, sid: int, db: Session = Depends(get_db))
         return RedirectResponse("/login", status_code=303)
     if not user.has_perm("can_file_manager"):
         raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang File Manager")
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -178,6 +180,7 @@ def api_server_files_status(
     db: Session = Depends(get_db),
 ):
     """Cek status izin dan sisa durasi sewa (lease) otentikasi File Manager untuk server ini."""
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -209,6 +212,7 @@ def api_server_files_unlock(
     if not user.has_perm("can_file_manager"):
         raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang File Manager")
 
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -266,6 +270,7 @@ def api_server_files_lock(
     db: Session = Depends(get_db),
 ):
     """Kunci kembali sesi File Manager untuk server ini."""
+    assert_server_access(user, sid)
     _verify_csrf_header(request)
     revoke_file_manager_unlock(user.id, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()

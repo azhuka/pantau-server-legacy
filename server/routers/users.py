@@ -50,6 +50,7 @@ from core.utils import (
 )
 from models import (
     AppSession,
+    Server,
     SystemSetting,
     User,
 )
@@ -133,6 +134,7 @@ def _render_profile_page(
             "can_manage_branding": can_manage_branding,
             "brand": get_branding_settings(db),
             "all_perms": security_auth.OPERATOR_PERMISSIONS,
+            "all_servers": db.query(Server).order_by(Server.hostname).all(),
             "raw_secret": raw_secret,
             "secret_formatted": formatted_secret,
             "qr_data_url": qr_data_url,
@@ -457,6 +459,7 @@ def api_users_list(user: User = Depends(require_user), db: Session = Depends(get
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
             "last_login_ip": u.last_login_ip,
             "permissions": perms,
+            "allowed_server_ids": u.get_allowed_server_ids(),
         })
     return {"users": out}
 
@@ -473,6 +476,8 @@ async def api_user_add(
     username = _clean_str(payload.get("username", ""), "", 64).strip()
     password = str(payload.get("password", "")).strip()
     role = payload.get("role", "operator")
+    allowed_servers = payload.get("allowed_server_ids")
+    allowed_servers_json = json.dumps(sorted(allowed_servers)) if isinstance(allowed_servers, list) and allowed_servers else None
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username dan password wajib diisi")
     if len(password) < 8:
@@ -485,6 +490,7 @@ async def api_user_add(
         password_hash=pwd_ctx.hash(password),
         role=role,
         is_active=True,
+        allowed_server_ids=allowed_servers_json,
     )
     db.add(new_user)
     db.commit()
@@ -554,13 +560,26 @@ async def user_add_submit(
             _flash_profile_users(False, f"Username '{username}' sudah digunakan"), status_code=303
         )
 
+    form_data = await request.form()
     perms_json = None
     if role == "operator":
-        form_data = await request.form()
         perms_dict = {
             pk: bool(form_data.get(f"perm_{pk}")) for pk in security_auth.OPERATOR_PERMISSIONS
         }
         perms_json = json.dumps(perms_dict)
+
+    scope_type = form_data.get("scope_type", "all")
+    allowed_server_ids_json = None
+    if scope_type == "custom":
+        sel_ids = []
+        for k, v in form_data.items():
+            if k.startswith("server_") and v:
+                try:
+                    sel_ids.append(int(k.replace("server_", "")))
+                except ValueError:
+                    pass
+        if sel_ids:
+            allowed_server_ids_json = json.dumps(sorted(sel_ids))
 
     new_u = User(
         username=username[:100],
@@ -569,6 +588,7 @@ async def user_add_submit(
         is_active=1,
         password_changed_at=datetime.utcnow(),
         permissions=perms_json,
+        allowed_server_ids=allowed_server_ids_json,
         created_by=user.username,
     )
     db.add(new_u)
@@ -674,14 +694,28 @@ async def user_edit_submit(
     if not target_u.is_master_admin() and uid != user.id:
         if role in ("operator", "viewer"):
             target_u.role = role
+        form_data = await request.form()
         if target_u.role == "operator":
-            form_data = await request.form()
             perms_dict = {
                 pk: bool(form_data.get(f"perm_{pk}")) for pk in security_auth.OPERATOR_PERMISSIONS
             }
             target_u.permissions = json.dumps(perms_dict)
         else:
             target_u.permissions = None
+
+        if can_manage_users:
+            edit_scope_type = form_data.get("edit_scope_type", "all")
+            if edit_scope_type == "custom":
+                sel_ids = []
+                for k, v in form_data.items():
+                    if k.startswith("edit_server_") and v:
+                        try:
+                            sel_ids.append(int(k.replace("edit_server_", "")))
+                        except ValueError:
+                            pass
+                target_u.allowed_server_ids = json.dumps(sorted(sel_ids)) if sel_ids else None
+            else:
+                target_u.allowed_server_ids = None
 
     _audit(db, user.username, "user_edit", f"{target_u.username} ({target_u.role})", "berhasil")
     db.commit()

@@ -22,6 +22,7 @@ from core.database import SessionLocal, get_db
 from core.security import (
     pwd_ctx,
     require_user,
+    assert_server_access,
     SESSION_COOKIE,
     _verify_csrf_header,
     _get_cached_server_id,
@@ -185,6 +186,7 @@ def api_terminal_status(
     db: Session = Depends(get_db),
 ):
     """Cek status izin dan sisa durasi sewa (lease) otentikasi terminal untuk server ini."""
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -221,6 +223,7 @@ def api_terminal_unlock(
             detail="Akses ditolak: Anda tidak memiliki wewenang Terminal Shell Web",
         )
 
+    assert_server_access(user, sid)
     server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server tidak ditemukan")
@@ -271,6 +274,7 @@ async def api_terminal_lock(
 ):
     """Kunci kembali akses terminal dan putus sesi aktif jika ada."""
     _verify_csrf_header(request)
+    assert_server_access(user, sid)
     if not (user.is_master_admin() or user.has_perm("can_terminal")):
         raise HTTPException(
             status_code=403,
@@ -309,6 +313,9 @@ async def ws_server_terminal(websocket: WebSocket, sid: int):
         user = db.query(User).filter(User.id == row.user_id).first()
         if not user or not user.has_perm("can_terminal"):
             await websocket.close(code=4403)
+            return
+        if not user.can_access_server(sid):
+            await websocket.close(code=4403, reason="Server access restricted")
             return
         server = db.query(Server).filter(Server.id == sid, Server.is_active == 1).first()
         if not server:

@@ -246,6 +246,11 @@ def require_file_manager(request: Request, db: Session = Depends(get_db)) -> Use
     if sid:
         try:
             sid_int = int(sid)
+            if not user.can_access_server(sid_int):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini.",
+                )
             rem = get_file_manager_lease_remaining(user.id, sid_int)
             if rem <= 0:
                 raise HTTPException(
@@ -322,3 +327,25 @@ def _verify_operator_password(
                 _audit(db, user.username, f"{action_name}_fail", f"{target_info} (kode 2FA tidak valid)", "gagal")
                 db.commit()
             raise HTTPException(status_code=401, detail="Kode 2FA / TOTP tidak valid atau kedaluwarsa")
+
+
+def filter_servers_for_user(query, user: Optional[User]):
+    """Filter SQLAlchemy query Server berdasarkan cakupan server pengguna (Node Scope)."""
+    if not user or user.is_master_admin():
+        return query
+    allowed = user.get_allowed_server_ids()
+    if allowed is not None:
+        return query.filter(Server.id.in_(allowed))
+    return query
+
+
+def assert_server_access(user: User, server_id: int) -> bool:
+    """Validasi apakah user berhak mengakses server_id. Lempar HTTPException 403 jika ditolak."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Otentikasi diperlukan.")
+    if not user.can_access_server(server_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Akses ditolak: Anda tidak memiliki wewenang atas server ini.",
+        )
+    return True
