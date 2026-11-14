@@ -354,6 +354,17 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.0
+
+### v4.11.0 (15 Nov 2026) - Konsolidasi Fitur Inti & Penertiban SemVer
+- **Konsolidasi Milestone Fitur:** Menstandarisasi penomoran versi SemVer proyek ke Minor `v4.11.0` yang secara kumulatif meresmikan fitur besar:
+  1. **File Integrity Monitoring (FIM):** Pengawasan integritas berkas sistem kritis dan kustom, deteksi perubahan konten, hak akses, dan pohon direktori.
+  2. **Web Terminal Dedicated Non-Root:** Shell interaktif terdedikasi akun `operator` yang aman dengan jejak audit konsol real-time.
+  3. **File Manager Terintegrasi:** Manajemen berkas remote dengan penanda cepat (*Quick Path Bookmarks*).
+  4. **Pemisahan Cakupan Server (RBAC Node Scope):** Pembagian wewenang operator per server spesifik dengan isolasi total pada dasbor, insiden, audit, dan perintah remote.
+- **Penertiban Siklus Rilis:** Mengembalikan disiplin SemVer di mana penambahan fitur besar berada pada versi Minor dan angka Patch (.0, .1, dst.) murni untuk pemeliharaan/bugfix.
+
+
 ## Versi 4.8.221
 
 ### v4.8.221 (15 Nov 2026) - Sinkronisasi Render Dasbor & Penegakan Cakupan Server Operator
