@@ -49,6 +49,11 @@
   .fm-search-input { width: 200px; height: 34px; padding: 6px 10px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); outline: none; }
   .fm-search-input:focus { border-color: var(--blue); }
 
+  .fm-bookmarks-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; margin-bottom: 2px; }
+  .fm-bm-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: 11px; font-family: inherit; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--dim); cursor: pointer; transition: all 0.15s ease; line-height: 1.4; height: 24px; box-sizing: border-box; }
+  .fm-bm-btn:hover { color: var(--blue); border-color: rgba(59, 130, 246, 0.4); background: var(--hover); }
+  .fm-bm-btn.active { color: var(--blue); font-weight: 600; border-color: var(--blue); background: rgba(59, 130, 246, 0.1); }
+
   .fm-status-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--dim); padding: 8px 12px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); flex-wrap: wrap; }
   .fm-disk-meter { display: flex; align-items: center; gap: 8px; }
   .fm-disk-bar { width: 120px; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
@@ -168,6 +173,29 @@
         <span>Upload File</span>
       </button>
     </div>
+  </div>
+
+  <!-- Quick Path Bookmarks -->
+  <div class="fm-bookmarks-bar" id="fm-bookmarks-bar">
+    <span style="font-size:10.5px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;display:inline-flex;align-items:center;gap:4px;margin-right:2px">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+      <span>Pintas:</span>
+    </span>
+    <button type="button" class="fm-bm-btn" data-path="/home/operator" onclick="fmLoadDir('/home/operator')" title="Home Operator (/home/operator)">
+      <span>~ Home</span>
+    </button>
+    <button type="button" class="fm-bm-btn" data-path="/" onclick="fmLoadDir('/')" title="Root Filesystem (/)">
+      <span>/ Root</span>
+    </button>
+    <button type="button" class="fm-bm-btn" data-path="/var/log" onclick="fmLoadDir('/var/log')" title="Log Sistem (/var/log)">
+      <span>/var/log</span>
+    </button>
+    <button type="button" class="fm-bm-btn" data-path="/etc" onclick="fmLoadDir('/etc')" title="Konfigurasi Sistem (/etc)">
+      <span>/etc</span>
+    </button>
+    <button type="button" class="fm-bm-btn" data-path="/var/www" onclick="fmLoadDir('/var/www')" title="Web Data (/var/www)">
+      <span>/var/www</span>
+    </button>
   </div>
 
   <!-- Sub-Bar: Item Count & Visual Disk Storage Meter -->
@@ -815,6 +843,18 @@ function fmUpdateNavButtons() {
   if (btnBack) btnBack.disabled = fmHistoryIdx <= 0;
   if (btnFwd) btnFwd.disabled = fmHistoryIdx >= fmHistory.length - 1;
   if (btnUp) btnUp.disabled = fmCurrentPath === '/';
+  fmUpdateBookmarks(fmCurrentPath);
+}
+
+function fmUpdateBookmarks(currentPath) {
+  document.querySelectorAll('.fm-bm-btn').forEach(btn => {
+    const p = btn.getAttribute('data-path');
+    if (p === currentPath) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
 }
 
 function fmGoBack() {
@@ -2108,7 +2148,7 @@ function updateFmTooltips(isEn) {
     'fm-btn-back': { id: 'Kembali', en: 'Back' },
     'fm-btn-forward': { id: 'Maju', en: 'Forward' },
     'fm-btn-up': { id: 'Ke Folder Induk', en: 'To Parent Folder' },
-    'fm-btn-home': { id: 'Ke Root Directory (/)', en: 'To Root Directory (/)' },
+    'fm-btn-home': { id: 'Ke Home Operator (/home/operator)', en: 'To Operator Home (/home/operator)' },
     'fm-address-pencil': { id: 'Ketik / Tempel Path Manual', en: 'Type / Paste Path Manually' },
     'fm-btn-new-folder': { id: !IS_ONLINE ? 'Server offline — aksi dinonaktifkan' : 'Buat Folder Baru', en: !IS_ONLINE ? 'Server offline — actions disabled' : 'Create New Folder' },
     'fm-btn-new-file': { id: !IS_ONLINE ? 'Server offline — aksi dinonaktifkan' : 'Buat File Baru', en: !IS_ONLINE ? 'Server offline — actions disabled' : 'Create New File' },

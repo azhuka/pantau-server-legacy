@@ -354,6 +354,16 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.8.218
+
+### v4.8.218 - 2026-11-14
+- **Fitur Baru (File Manager - Quick Path Bookmarks):**
+  - Menambahkan bilah pintas direktori cepat (`.fm-bookmarks-bar`) di bawah toolbar navigasi File Manager (`~ Home`, `/ Root`, `/var/log`, `/etc`, `/var/www`).
+  - Menambahkan sinkronisasi status aktif visual (`.fm-bm-btn.active`) saat direktori aktif cocok dengan target pintas.
+  - Memperbarui tooltip dan target navigasi tombol Home (`#fm-btn-home`) agar mengarah langsung ke `/home/operator`.
+  - Mempertahankan fallback otomatis ke direktori root (`/`) apabila direktori `/home/operator` belum tersedia.
+
+
 ## Versi 4.8.217
 
 ### Perbaikan & Peningkatan (v4.8.217)
