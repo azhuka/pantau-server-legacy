@@ -354,6 +354,15 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.8.220
+
+### v4.8.220 - 2026-11-15
+- **Perbaikan Bug & UX (Manajemen Pengguna):**
+  - Memperbaiki rute `/users` agar merender konteks lengkap (`_render_profile_page`), memastikan daftar seluruh armada server tampil pada opsi pemilihan cakupan server.
+  - Memodifikasi formulir penambahan pengguna baru menggunakan pengiriman asinkron (AJAX Fetch), sehingga kesalahan validasi (seperti sandi kurang dari 12 karakter) ditampilkan seketika tanpa me-reload halaman dan tidak mereset isian yang telah diketik/dipilih.
+  - Menambahkan tombol pintas preset wewenang: *Pemeliharaan* (Sysadmin) dan *Monitoring L1* untuk mempercepat penugasan operator baru.
+
+
 ## Versi 4.8.219
 
 ### v4.8.219 - 2026-11-15

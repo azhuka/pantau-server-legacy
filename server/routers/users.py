@@ -434,7 +434,7 @@ def users_page(request: Request, db: Session = Depends(get_db)):
         user.is_master_admin() or user.has_perm("can_manage_users") or user.has_perm("can_manage_viewers")
     ):
         return RedirectResponse("/", status_code=303)
-    return tpl(request, "profile.html", {"user": user})
+    return _render_profile_page(request=request, user=user, db=db, active_tab="users")
 
 
 @router.get("/api/users")
@@ -537,14 +537,17 @@ async def user_add_submit(
         return RedirectResponse("/profile?tab=users", status_code=303)
     _verify_csrf_form(request, csrf_token)
 
+    is_ajax = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in request.headers.get("Accept", "")
+    )
+
     username = username.strip()
     if not re.match(r"^[a-zA-Z0-9_\-\.]{3,50}$", username):
-        return RedirectResponse(
-            _flash_profile_users(
-                False, "Username harus 3-50 karakter alfanumerik (hanya huruf, angka, _, -, .)"
-            ),
-            status_code=303,
-        )
+        err = "Username harus 3-50 karakter alfanumerik (hanya huruf, angka, _, -, .)"
+        if is_ajax:
+            return JSONResponse(status_code=400, content={"ok": False, "detail": err})
+        return RedirectResponse(_flash_profile_users(False, err), status_code=303)
 
     if not can_manage_users:
         role = "viewer"
@@ -553,12 +556,15 @@ async def user_add_submit(
 
     valid, err_msg = security_auth.validate_password_strength(password)
     if not valid:
+        if is_ajax:
+            return JSONResponse(status_code=400, content={"ok": False, "detail": err_msg})
         return RedirectResponse(_flash_profile_users(False, err_msg), status_code=303)
 
     if db.query(User).filter(User.username == username).first():
-        return RedirectResponse(
-            _flash_profile_users(False, f"Username '{username}' sudah digunakan"), status_code=303
-        )
+        err = f"Username '{username}' sudah digunakan"
+        if is_ajax:
+            return JSONResponse(status_code=400, content={"ok": False, "detail": err})
+        return RedirectResponse(_flash_profile_users(False, err), status_code=303)
 
     form_data = await request.form()
     perms_json = None
@@ -594,10 +600,11 @@ async def user_add_submit(
     db.add(new_u)
     _audit(db, user.username, "user_add", f"{username} (peran {role})", "berhasil")
     db.commit()
+    msg = f"Pengguna '{username}' berhasil didaftarkan sebagai {new_u.role_display()}"
+    if is_ajax:
+        return JSONResponse({"ok": True, "detail": msg})
     return RedirectResponse(
-        _flash_profile_users(
-            True, f"Pengguna '{username}' berhasil didaftarkan sebagai {new_u.role_display()}"
-        ),
+        _flash_profile_users(True, msg),
         status_code=303,
     )
 
