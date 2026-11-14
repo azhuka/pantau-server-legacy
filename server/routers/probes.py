@@ -60,7 +60,7 @@ def probing_page(request: Request, db: Session = Depends(get_db)):
         {
             "user": user,
             "servers": servers_data,
-            "can_probing": user.has_perm("can_probing"),
+            "can_probing": not user.is_viewer() and (user.is_master_admin() or user.is_operator() or user.has_perm("can_probing")),
         },
     )
 
@@ -108,15 +108,23 @@ def api_probes_list(
     active_up_lats = [
         p.last_latency_ms
         for p in all_probes
-        if p.status in ("up", "degraded") and p.last_latency_ms is not None
+        if p.status in ("up", "degraded") and p.last_latency_ms is not None and p.is_active
     ]
-    avg_lat = round(sum(active_up_lats) / len(active_up_lats), 1) if active_up_lats else 0.0
+    avg_lat = round(sum(active_up_lats) / len(active_up_lats), 1) if active_up_lats else None
 
-    uptimes_24 = [p.uptime_24h for p in all_probes if p.uptime_24h is not None and p.is_active]
-    avg_uptime_24h = round(sum(uptimes_24) / len(uptimes_24), 2) if uptimes_24 else 100.0
+    uptimes_24 = [
+        p.uptime_24h
+        for p in all_probes
+        if p.uptime_24h is not None and p.is_active and p.last_checked_at is not None
+    ]
+    avg_uptime_24h = round(sum(uptimes_24) / len(uptimes_24), 1) if uptimes_24 else None
 
-    uptimes_30 = [p.uptime_30d for p in all_probes if p.uptime_30d is not None and p.is_active]
-    avg_uptime_30d = round(sum(uptimes_30) / len(uptimes_30), 2) if uptimes_30 else 100.0
+    uptimes_30 = [
+        p.uptime_30d
+        for p in all_probes
+        if p.uptime_30d is not None and p.is_active and p.last_checked_at is not None
+    ]
+    avg_uptime_30d = round(sum(uptimes_30) / len(uptimes_30), 1) if uptimes_30 else None
 
     servers_map = {s.id: s.hostname for s in filter_servers_for_user(db.query(Server), user).all()}
 
@@ -151,8 +159,8 @@ def api_probes_list(
                 "last_error": p.last_error,
                 "ssl_expires_at": p.ssl_expires_at.isoformat() if p.ssl_expires_at else None,
                 "ssl_days_remaining": p.ssl_days_remaining,
-                "uptime_24h": round(p.uptime_24h if p.uptime_24h is not None else 100.0, 1),
-                "uptime_30d": round(p.uptime_30d if p.uptime_30d is not None else 100.0, 1),
+                "uptime_24h": round(p.uptime_24h, 1) if p.uptime_24h is not None and p.last_checked_at else None,
+                "uptime_30d": round(p.uptime_30d, 1) if p.uptime_30d is not None and p.last_checked_at else None,
                 "consecutive_failures": p.consecutive_failures,
                 "consecutive_successes": p.consecutive_successes,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
@@ -183,7 +191,7 @@ async def api_probe_create(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    if user.is_viewer() or not (user.is_master_admin() or user.has_perm("can_probing")):
+    if user.is_viewer() or not (user.is_master_admin() or user.is_operator() or user.has_perm("can_probing")):
         raise HTTPException(status_code=403, detail="Akses ditolak: Izin 'can_probing' diperlukan")
 
     try:
@@ -487,7 +495,7 @@ async def api_probe_update(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    if user.is_viewer() or not (user.is_master_admin() or user.has_perm("can_probing")):
+    if user.is_viewer() or not (user.is_master_admin() or user.is_operator() or user.has_perm("can_probing")):
         raise HTTPException(status_code=403, detail="Akses ditolak: Izin 'can_probing' diperlukan")
 
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()
@@ -604,7 +612,7 @@ def api_probe_delete(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    if user.is_viewer() or not (user.is_master_admin() or user.has_perm("can_probing")):
+    if user.is_viewer() or not (user.is_master_admin() or user.is_operator() or user.has_perm("can_probing")):
         raise HTTPException(status_code=403, detail="Akses ditolak: Izin 'can_probing' diperlukan")
 
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()
@@ -631,7 +639,7 @@ def api_probe_toggle(
     db: Session = Depends(get_db),
 ):
     _verify_csrf_header(request)
-    if user.is_viewer() or not (user.is_master_admin() or user.has_perm("can_probing")):
+    if user.is_viewer() or not (user.is_master_admin() or user.is_operator() or user.has_perm("can_probing")):
         raise HTTPException(status_code=403, detail="Akses ditolak: Izin 'can_probing' diperlukan")
 
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()

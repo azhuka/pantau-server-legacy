@@ -354,6 +354,11 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.4
+
+- **UI Probing**: Menambahkan tombol '+ Tambah Endpoint' pada page-header, toolbar, dan empty-state.\n- **Akurasi Metrik**: Ketersediaan (24 Jam) menampilkan '—' saat kosong (anti-100% fiktif).\n- **RBAC**: Hak kelola probe bagi operator dan penyertaan can_probing pada preset pemeliharaan.
+
+
 ## Versi 4.11.3
 
 - **Security & RBAC**: Penegakan isolasi server scope pada file manager, service ops, probing, dan remote log requests.\n- **Paginasi**: Eliminasi alwaysShow: true pada tabel insiden resolved.

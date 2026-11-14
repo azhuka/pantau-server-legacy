@@ -476,13 +476,24 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px">
   <div class="page-header-left">
-    <h2>Pemantauan Endpoint &amp; Jaringan</h2>
+    <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"></circle><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path></svg>
+      <span>Pemantauan Endpoint &amp; Jaringan</span>
+    </h2>
     <div class="page-header-desc">
-      Pantau ketersediaan &amp; latensi endpoint eksternal (HTTP/S, ICMP Ping, Port TCP).
+      Pantau ketersediaan &amp; latensi endpoint (HTTP/S, ICMP Ping, Port TCP) secara berkala.
     </div>
   </div>
+  {% if can_probing or user.is_master_admin() or user.is_operator() %}
+  <div class="page-header-actions">
+    <button type="button" class="btn btn-primary" onclick="openAddProbeModal()" title="Tambah endpoint baru" aria-label="Tambah endpoint baru" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 14px;font-weight:600">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      <span>+ Tambah Endpoint</span>
+    </button>
+  </div>
+  {% endif %}
 </div>
 
 <!-- KPI Strip Ringkasan -->
@@ -520,14 +531,14 @@
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
       Rata-rata Latensi
     </div>
-    <div class="probe-kpi-val" id="kpi-lat">0<span style="font-size:14px;color:var(--dim);font-weight:600;margin-left:2px">ms</span></div>
+    <div class="probe-kpi-val" id="kpi-lat" style="color:var(--dim)">—</div>
   </div>
   <div class="probe-kpi-card" style="border-left: 3px solid #38bdf8">
     <div class="probe-kpi-label">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
       Ketersediaan (24 Jam)
     </div>
-    <div class="probe-kpi-val" id="kpi-uptime" style="color:#38bdf8">100<span style="font-size:14px;color:var(--dim);font-weight:600;margin-left:2px">%</span></div>
+    <div class="probe-kpi-val" id="kpi-uptime" style="color:var(--dim)">—</div>
   </div>
 </div>
 
@@ -578,7 +589,7 @@
       <button type="button" class="btn btn-ghost btn-toolbar" onclick="fetchProbes(true)" title="Muat Ulang Data">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19"/></svg>
       </button>
-      {% if can_probing or user.is_master_admin() %}
+      {% if can_probing or user.is_master_admin() or user.is_operator() %}
       <button type="button" class="btn btn-primary btn-toolbar" onclick="openAddProbeModal()" title="Tambah endpoint baru" aria-label="Tambah endpoint baru">
         <span>+ Tambah</span>
       </button>
@@ -674,14 +685,16 @@
             <span class="probe-field-help" id="formTargetHelp">url aplikasi yang ingin dicek. (https://... atau http://IP:Port).</span>
           </div>
           <div class="probe-form-group">
-            <label for="formServerId">Tautkan ke Server (Opsional)</label>
+            <label for="formServerId">Tautkan ke Server {% if user.allowed_server_ids is not None %}*{% else %}(Opsional){% endif %}</label>
             <select id="formServerId">
-              <option value="">-- Kosong --</option>
+              {% if user.allowed_server_ids is None %}
+              <option value="">-- Kosong (Standalone / Eksternal) --</option>
+              {% endif %}
               {% for s in servers %}
-              <option value="{{ s.id }}">{{ s.hostname }} ({{ s.ip_address }})</option>
+              <option value="{{ s.id }}" {% if loop.first and user.allowed_server_ids is not None %}selected{% endif %}>{{ s.hostname }} ({{ s.ip_address }})</option>
               {% endfor %}
             </select>
-            <span class="probe-field-help">Aplikasi yang berjalan server klien. Kosongkan jika memantau aplikasi atau perangkat jaringan yang tidak anda kendalikan.</span>
+            <span class="probe-field-help">{% if user.allowed_server_ids is not None %}Pilih server klien dalam wewenang Anda.{% else %}Aplikasi yang berjalan di server klien. Kosongkan jika memantau aplikasi eksternal.{% endif %}</span>
           </div>
         </div>
 
@@ -883,7 +896,7 @@
 {% block scripts %}
 <script>
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-const CAN_MANAGE_PROBING = {{ 'true' if (can_probing or user.is_master_admin()) else 'false' }};
+const CAN_MANAGE_PROBING = {{ 'true' if (can_probing or user.is_master_admin() or user.is_operator()) else 'false' }};
 
 let probeDataList = [];
 let pollTimer = null;
@@ -941,14 +954,28 @@ function renderKpi(sum) {
   document.getElementById('kpi-up').textContent = sum.up || 0;
   document.getElementById('kpi-down').textContent = sum.down || 0;
   document.getElementById('kpi-degraded').textContent = sum.degraded || 0;
-  document.getElementById('kpi-lat').innerHTML = (sum.avg_latency_ms || 0) + '<span style="font-size:14px;color:var(--dim);font-weight:600;margin-left:2px">ms</span>';
-  const avgUpVal = (sum.avg_uptime_24h !== undefined && sum.avg_uptime_24h !== null) ? Number(sum.avg_uptime_24h) : 100.0;
-  const avgUpStr = avgUpVal.toFixed(1);
-  const avgUpCol = avgUpVal >= 99.0 ? '#38bdf8' : (avgUpVal >= 95.0 ? 'var(--yellow)' : 'var(--red)');
+
+  const kpiLatEl = document.getElementById('kpi-lat');
+  if (kpiLatEl) {
+    if (sum.total > 0 && sum.avg_latency_ms !== null && sum.avg_latency_ms !== undefined && Number(sum.avg_latency_ms) > 0) {
+      kpiLatEl.innerHTML = sum.avg_latency_ms + '<span style="font-size:14px;color:var(--dim);font-weight:600;margin-left:2px">ms</span>';
+    } else {
+      kpiLatEl.innerHTML = '<span style="color:var(--dim)">—</span>';
+    }
+  }
+
   const kpiUpEl = document.getElementById('kpi-uptime');
   if (kpiUpEl) {
-    kpiUpEl.style.color = avgUpCol;
-    kpiUpEl.innerHTML = avgUpStr + '<span style="font-size:14px;color:var(--dim);font-weight:600;margin-left:2px">%</span>';
+    if (sum.total > 0 && sum.avg_uptime_24h !== null && sum.avg_uptime_24h !== undefined) {
+      const avgUpVal = Number(sum.avg_uptime_24h);
+      const avgUpStr = avgUpVal.toFixed(1);
+      const avgUpCol = avgUpVal >= 99.0 ? '#38bdf8' : (avgUpVal >= 95.0 ? 'var(--yellow)' : 'var(--red)');
+      kpiUpEl.style.color = avgUpCol;
+      kpiUpEl.innerHTML = avgUpStr + '<span style="font-size:14px;color:var(--dim);font-weight:600;margin-left:2px">%</span>';
+    } else {
+      kpiUpEl.style.color = 'var(--dim)';
+      kpiUpEl.innerHTML = '—';
+    }
   }
   document.getElementById('probeCountLabel').textContent = `Total: ${sum.total || 0} endpoint`;
 }
@@ -1002,8 +1029,14 @@ function renderTable() {
     tbody.innerHTML = `
       <tr>
         <td colspan="7" style="text-align:center;padding:40px;color:var(--dim)">
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Tidak ada endpoint yang cocok</div>
-          <div style="font-size:12px">Ubah kata kunci pencarian atau tambahkan endpoint baru.</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Tidak ada endpoint terpantau</div>
+          <div style="font-size:12px;margin-bottom:${CAN_MANAGE_PROBING ? '14px' : '0'}">Belum ada endpoint yang dipantau atau tidak ada data yang cocok dengan filter pencarian.</div>
+          ${CAN_MANAGE_PROBING ? `
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAddProbeModal()" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>+ Tambah Endpoint Baru</span>
+            </button>
+          ` : ''}
         </td>
       </tr>
     `;
@@ -1069,12 +1102,22 @@ function renderTable() {
       : `<span style="color:var(--dim)">-</span>`;
 
     // Uptime Pill
-    const up24Num = (p.uptime_24h !== undefined && p.uptime_24h !== null) ? Number(p.uptime_24h) : 100.0;
-    const up30Num = (p.uptime_30d !== undefined && p.uptime_30d !== null) ? Number(p.uptime_30d) : 100.0;
-    const up24 = up24Num.toFixed(1);
-    const up30 = up30Num.toFixed(1);
-    const up24Color = up24Num >= 99.0 ? 'var(--green)' : (up24Num >= 95.0 ? 'var(--yellow)' : 'var(--red)');
-    const up30Color = up30Num >= 99.0 ? 'var(--dim)' : (up30Num >= 95.0 ? 'var(--yellow)' : 'var(--red)');
+    let uptimeDisplay = `<span style="color:var(--dim)">—</span>`;
+    if (p.last_checked_at && p.uptime_24h !== null && p.uptime_24h !== undefined) {
+      const up24Num = Number(p.uptime_24h);
+      const up30Num = (p.uptime_30d !== undefined && p.uptime_30d !== null) ? Number(p.uptime_30d) : up24Num;
+      const up24 = up24Num.toFixed(1);
+      const up30 = up30Num.toFixed(1);
+      const up24Color = up24Num >= 99.0 ? 'var(--green)' : (up24Num >= 95.0 ? 'var(--yellow)' : 'var(--red)');
+      const up30Color = up30Num >= 99.0 ? 'var(--dim)' : (up30Num >= 95.0 ? 'var(--yellow)' : 'var(--red)');
+      uptimeDisplay = `
+        <div style="font-family:ui-monospace,monospace;font-size:11.5px">
+          <span style="color:${up24Color};font-weight:${up24Num < 95.0 ? '700' : 'normal'}">${up24}%</span>
+          <span style="color:var(--dim);margin:0 2px">/</span>
+          <span style="color:${up30Color}">${up30}%</span>
+        </div>
+      `;
+    }
 
     const pTier = parseInt(p.tier, 10) || 2;
     let tierBadge = '';
@@ -1107,11 +1150,7 @@ function renderTable() {
           ${latHtml}
         </td>
         <td class="col-metric td-uptime">
-          <div style="font-family:ui-monospace,monospace;font-size:11.5px">
-            <span style="color:${up24Color};font-weight:${up24Num < 95.0 ? '700' : 'normal'}">${up24}%</span>
-            <span style="color:var(--dim);margin:0 2px">/</span>
-            <span style="color:${up30Color}">${up30}%</span>
-          </div>
+          ${uptimeDisplay}
         </td>
         <td class="col-time td-freq">
           <div style="font-size:11px;color:var(--text)">${lastCheckStr}</div>
@@ -1496,19 +1535,24 @@ async function openHistoryModal(id) {
     const prb = data.probe || {};
     document.getElementById('hist-cur-status').innerHTML = `<span class="status-pill status-pill-${prb.status || 'unknown'}">${(prb.status || '—').toUpperCase()}</span>`;
     document.getElementById('hist-avg-lat').textContent = stats.avg_latency_ms !== null ? `${stats.avg_latency_ms} ms` : '—';
-    const histUp24 = (prb.uptime_24h !== undefined && prb.uptime_24h !== null) ? Number(prb.uptime_24h) : 100.0;
-    const histUp30 = (prb.uptime_30d !== undefined && prb.uptime_30d !== null) ? Number(prb.uptime_30d) : 100.0;
-    const histUp24Col = histUp24 >= 99.0 ? 'var(--green)' : (histUp24 >= 95.0 ? 'var(--yellow)' : 'var(--red)');
-    const histUp30Col = histUp30 >= 99.0 ? 'var(--text)' : (histUp30 >= 95.0 ? 'var(--yellow)' : 'var(--red)');
     const elUp24 = document.getElementById('hist-up-24');
     const elUp30 = document.getElementById('hist-up-30');
-    if (elUp24) {
-      elUp24.textContent = `${histUp24.toFixed(1)}%`;
-      elUp24.style.color = histUp24Col;
-    }
-    if (elUp30) {
-      elUp30.textContent = `${histUp30.toFixed(1)}%`;
-      elUp30.style.color = histUp30Col;
+    if (prb.last_checked_at && prb.uptime_24h !== undefined && prb.uptime_24h !== null) {
+      const histUp24 = Number(prb.uptime_24h);
+      const histUp30 = (prb.uptime_30d !== undefined && prb.uptime_30d !== null) ? Number(prb.uptime_30d) : histUp24;
+      const histUp24Col = histUp24 >= 99.0 ? 'var(--green)' : (histUp24 >= 95.0 ? 'var(--yellow)' : 'var(--red)');
+      const histUp30Col = histUp30 >= 99.0 ? 'var(--text)' : (histUp30 >= 95.0 ? 'var(--yellow)' : 'var(--red)');
+      if (elUp24) {
+        elUp24.textContent = `${histUp24.toFixed(1)}%`;
+        elUp24.style.color = histUp24Col;
+      }
+      if (elUp30) {
+        elUp30.textContent = `${histUp30.toFixed(1)}%`;
+        elUp30.style.color = histUp30Col;
+      }
+    } else {
+      if (elUp24) { elUp24.textContent = '—'; elUp24.style.color = 'var(--dim)'; }
+      if (elUp30) { elUp30.textContent = '—'; elUp30.style.color = 'var(--dim)'; }
     }
 
     // Render Grafik SVG

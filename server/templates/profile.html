@@ -1779,7 +1779,7 @@ function setAddAllPerms(val) {
 }
 
 function setAddPreset(type) {
-  const sysadminPerms = ['can_terminal', 'can_file_manager', 'can_services', 'can_processes', 'can_firewall', 'can_cron', 'can_ssl', 'can_apt', 'can_server_control'];
+  const sysadminPerms = ['can_terminal', 'can_file_manager', 'can_services', 'can_processes', 'can_firewall', 'can_cron', 'can_ssl', 'can_apt', 'can_server_control', 'can_probing'];
   const monitoringPerms = ['can_services', 'can_processes', 'can_ssl', 'can_probing', 'can_audit'];
 
   document.querySelectorAll('.add-perm-cb').forEach(cb => {
