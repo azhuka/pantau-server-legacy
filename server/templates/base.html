@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token }}">
 <title>{% block title %}Pantau Server{% endblock %}</title>
-<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.1' }}">
+<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.2' }}">
 <style id="noc-act-dropdown-anti-cache">
   /* Override Mutlak Anti-Cache untuk Tombol Dropdown Tindakan yang Non-Aktif (Disabled) */
   .noc-act-dropdown-item:disabled,
@@ -3028,12 +3028,10 @@ body.show-alert-banner .main{padding-top:72px}
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></span> <span class="nav-label" data-i18n="menu_problems">Insiden</span>
       <span id="nav-incident-badge" class="badge" style="display:none;margin-left:auto;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:10px"></span>
     </a>
-    {% if user and (user.is_master_admin() or user.has_perm('can_probing')) %}
     <a href="/probing" class="nav-link {% if '/probing' in request.url.path %}active{% endif %}" onclick="closeMobDrawer()" title="Pemantauan Endpoint &amp; Jaringan">
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"></circle><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path></svg></span> <span class="nav-label" data-i18n="menu_probing">Endpoint</span>
       <span id="nav-probe-badge" class="badge badge-down" style="display:none;margin-left:auto;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap;line-height:14px"></span>
     </a>
-    {% endif %}
     {% if user and (user.is_master_admin() or (user.allowed_server_ids is none and user.has_perm('can_audit'))) %}
     <a href="/logs" class="nav-link {% if '/logs' in request.url.path %}active{% endif %}" onclick="closeMobDrawer()" title="Log Sistem">
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg></span> <span class="nav-label" data-i18n="menu_logs">Log</span>
@@ -3070,7 +3068,7 @@ body.show-alert-banner .main{padding-top:72px}
   </nav>
   <div class="sidebar-footer">
     <div class="sb-footer-brand">Pantau Server</div>
-    <div class="sb-footer-ver">v{{ app_version or '4.11.1' }}</div>
+    <div class="sb-footer-ver">v{{ app_version or '4.11.2' }}</div>
     <div class="sb-clock-card" id="sbClockBox" 
          data-server-tz="{{ server_tz or 'WITA' }}" 
          data-server-offset="{{ server_tz_offset if server_tz_offset is defined else 480 }}"

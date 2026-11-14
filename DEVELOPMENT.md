@@ -354,6 +354,13 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.2
+
+### v4.11.2 (15 Nov 2026) - Pengembalian Menu Endpoint Permanen pada Bilah Navigasi
+- **Navigasi Baku Endpoint:** Mengembalikan link menu `Endpoint` (`/probing`) sebagai menu navigasi permanen bersama Dashboard, Daftar Server, dan Insiden di `server/templates/base.html`, sehingga operator khusus dapat selalu mengakses pemantauan kesehatan endpoint yang relevan dengan server kliennya.
+- **Isolasi Terintegrasi:** Mempertahankan penyaringan data di mana operator khusus hanya melihat endpoint yang terikat pada server dalam wewenangnya, dengan sakelar wewenang `can_probing` khusus mengatur izin tindakan penambahan/penyuntingan.
+
+
 ## Versi 4.11.1
 
 ### v4.11.1 (15 Nov 2026) - Pengetatan Isolasi Menyeluruh Operator Cakupan Terbatas
