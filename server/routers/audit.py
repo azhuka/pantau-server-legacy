@@ -38,6 +38,8 @@ def logs_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if not (user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_audit"))):
+        return RedirectResponse("/", status_code=303)
     return tpl(request, "logs.html", {"user": user, "log_file": settings.LOG_FILE})
 
 
@@ -48,6 +50,11 @@ def api_logs_dashboard(
     db: Session = Depends(get_db),
     lines: int = 300,
 ):
+    if not (user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_audit"))):
+        raise HTTPException(
+            status_code=403,
+            detail="Akses ditolak: Hanya Master Admin atau Operator Utama Global yang dapat mengakses log sistem host.",
+        )
     lines = max(10, min(lines, 2000))
     path = settings.LOG_FILE
     last_lines = tail_lines(path, lines)
@@ -87,6 +94,10 @@ def api_audit(
         server_id=server_id,
         status_filter=status_clean,
     )
+    if user_actor.allowed_server_ids is not None:
+        allowed_ids = set(user_actor.get_allowed_server_ids())
+        rows = [r for r in rows if r.get("server_id") is not None and r.get("server_id") in allowed_ids]
+
     for r in rows:
         if hasattr(r.get("created_at"), "strftime"):
             r["time_str"] = r["created_at"].strftime("%Y-%m-%d %H:%M:%S")
@@ -169,7 +180,7 @@ def audit_page(
 
     if user_actor.allowed_server_ids is not None:
         allowed_ids = set(user_actor.get_allowed_server_ids())
-        rows = [r for r in rows if r.get("server_id") is None or r.get("server_id") in allowed_ids]
+        rows = [r for r in rows if r.get("server_id") is not None and r.get("server_id") in allowed_ids]
 
     all_servers = filter_servers_for_user(db.query(Server), user_actor).order_by(Server.hostname).all()
 

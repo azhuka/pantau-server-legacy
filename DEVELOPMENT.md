@@ -354,6 +354,16 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.1
+
+### v4.11.1 (15 Nov 2026) - Pengetatan Isolasi Menyeluruh Operator Cakupan Terbatas
+- **Isolasi Endpoint Synthetic Probing:** Operator dengan cakupan server terbatas hanya dapat melihat, menguji, dan mengelola probe yang terikat pada server dalam wewenangnya. Probe global mandiri (*standalone*) dan probe server lain disaring penuh dari tampilan dan API.
+- **Proteksi Log Sistem Host:** Mengunci rute `/logs` dan `/api/logs/*` serta menyembunyikan navigasinya di sidebar untuk operator cakupan terbatas, mencegah inspeksi terhadap log internal aplikasi pantau-server pusat.
+- **Pencegahan Modifikasi Organisasi & Pengguna:** Membatasi tab dan aksi "Setel Organisasi" (`/profile/branding`) serta pengelolaan akun pengguna (`/users`) khusus bagi Master Admin dan Operator Utama Global, menjaga identitas induk platform tetap terlindungi.
+- **Isolasi Log Audit & Pemeliharaan:** Memastikan tabel riwayat tindakan (`/audit`) dan jadwal jendela pemeliharaan (`/maintenance`) hanya menampilkan data yang berelasi dengan server yang diizinkan bagi operator.
+- **Validasi Wewenang Operasi Remote:** Mengintegrasikan validasi `can_access_server` pada seluruh fungsi eksekusi remote (`_check_server_online`, kontrol firewall, proses, cron, port, SSL, dan FIM).
+
+
 ## Versi 4.11.0
 
 ### v4.11.0 (15 Nov 2026) - Konsolidasi Fitur Inti & Penertiban SemVer

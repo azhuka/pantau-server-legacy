@@ -61,8 +61,11 @@ def api_update_thresholds(
 ):
     """Perbarui threshold insiden global."""
     _verify_csrf_header(request)
-    if not (user.is_master_admin() or user.has_perm("can_manage_servers")):
-        raise HTTPException(status_code=403, detail="Akses ditolak")
+    if not (user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_servers"))):
+        raise HTTPException(
+            status_code=403,
+            detail="Akses ditolak: Hanya Master Admin atau Operator Utama Global yang dapat mengubah ambang batas insiden global.",
+        )
 
     new_th = {}
     float_keys = [
@@ -152,8 +155,11 @@ def api_reset_thresholds(
 ):
     """Reset threshold insiden global ke default."""
     _verify_csrf_header(request)
-    if not (user.is_master_admin() or user.has_perm("can_manage_servers")):
-        raise HTTPException(status_code=403, detail="Akses ditolak")
+    if not (user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_servers"))):
+        raise HTTPException(
+            status_code=403,
+            detail="Akses ditolak: Hanya Master Admin atau Operator Utama Global yang dapat mengubah ambang batas insiden global.",
+        )
 
     row = db.query(SystemSetting).filter(SystemSetting.key == "thresholds").first()
     if row:

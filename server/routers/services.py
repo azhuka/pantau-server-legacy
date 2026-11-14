@@ -66,7 +66,7 @@ def service_add_submit(
         "application/json" in request.headers.get("accept", "")
         or request.headers.get("x-requested-with") == "xmlhttprequest"
     )
-    if not user or not user.has_perm("can_services"):
+    if not user or not user.has_perm("can_services") or not user.can_access_server(sid):
         if is_json:
             return JSONResponse(
                 {"ok": False, "detail": "Akses ditolak: Izin kontrol services diperlukan"},
@@ -133,7 +133,7 @@ def service_restart(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not user.has_perm("can_services"):
+    if not user or not user.has_perm("can_services") or not user.can_access_server(sid):
         if is_json:
             return Response(
                 json.dumps({"ok": False, "detail": "Akses ditolak: Anda tidak memiliki wewenang Services"}),
@@ -143,7 +143,7 @@ def service_restart(
         return RedirectResponse("/", status_code=303)
     token = csrf_token or request.headers.get("X-CSRF-Token", "")
     _verify_csrf_form(request, token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="layanan")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="layanan", user=user)
     if err_resp:
         return err_resp
     svc = db.query(Service).filter(Service.id == svc_id, Service.server_id == sid).first()
@@ -217,7 +217,7 @@ def _service_action(request: Request, sid: int, svc_id: int, action: str, db: Se
     """Helper bersama untuk start/stop services."""
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not user.has_perm("can_services"):
+    if not user or not user.has_perm("can_services") or not user.can_access_server(sid):
         if is_json:
             return Response(
                 json.dumps({"ok": False, "detail": "Akses ditolak: Anda tidak memiliki wewenang Services"}),
@@ -227,7 +227,7 @@ def _service_action(request: Request, sid: int, svc_id: int, action: str, db: Se
         return RedirectResponse("/", status_code=303)
     token = csrf_token or request.headers.get("X-CSRF-Token", "")
     _verify_csrf_form(request, token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="layanan")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="layanan", user=user)
     if err_resp:
         return err_resp
     svc = db.query(Service).filter(Service.id == svc_id, Service.server_id == sid).first()
@@ -431,7 +431,7 @@ def service_delete(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not user.has_perm("can_services"):
+    if not user or not user.has_perm("can_services") or not user.can_access_server(sid):
         if is_json:
             return Response(
                 json.dumps({"ok": False, "detail": "Akses ditolak: Izin kontrol services diperlukan"}),
@@ -485,7 +485,7 @@ def service_toggle_core(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not user.has_perm("can_services"):
+    if not user or not user.has_perm("can_services") or not user.can_access_server(sid):
         if is_json:
             return Response(
                 json.dumps({"ok": False, "detail": "Akses ditolak"}),
@@ -535,7 +535,7 @@ async def api_systemd_action(
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
-    if not user or not user.has_perm("can_services"):
+    if not user or not user.has_perm("can_services") or not user.can_access_server(sid):
         raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang Services")
 
     _verify_csrf_header(request)
@@ -558,7 +558,7 @@ async def api_systemd_action(
             detail="Unit agen pemantau (agent_pantau) dilindungi oleh sistem keamanan dan tidak boleh dihentikan.",
         )
 
-    server, err_resp = _check_server_online(db, sid, is_json=True)
+    server, err_resp = _check_server_online(db, sid, is_json=True, user=user)
     if err_resp:
         return err_resp
 

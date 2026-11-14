@@ -87,11 +87,29 @@ def api_maintenance_windows_list(
         query = query.filter(MaintenanceWindow.scope_type == scope_type)
 
     all_windows = db.query(MaintenanceWindow).all()
+    windows = query.all()
+
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        def _window_allowed(w):
+            if w.scope_type == "server" and w.server_id in allowed_ids:
+                return True
+            if w.scope_type in ("servers", "custom") and w.server_ids:
+                try:
+                    sids = [int(x.strip()) for x in w.server_ids.split(",") if x.strip().isdigit()]
+                    if any(sid in allowed_ids for sid in sids):
+                        return True
+                except Exception:
+                    pass
+            return False
+
+        all_windows = [w for w in all_windows if _window_allowed(w)]
+        windows = [w for w in windows if _window_allowed(w)]
+
     active_count = sum(1 for w in all_windows if w.status == "active")
     upcoming_count = sum(1 for w in all_windows if w.status == "scheduled")
     completed_count = sum(1 for w in all_windows if w.status in ("completed", "cancelled"))
 
-    windows = query.all()
     all_servers_map = {s.id: s.hostname for s in db.query(Server).all()}
     result = []
     for w in windows:
@@ -192,6 +210,25 @@ async def api_maintenance_windows_create(
         if not server_group:
             raise HTTPException(status_code=400, detail="Grup target wajib dipilih")
 
+    if user.allowed_server_ids is not None:
+        if scope_type in ("all", "group"):
+            raise HTTPException(
+                status_code=403,
+                detail="Akses ditolak: Operator dengan cakupan server terbatas hanya dapat menjadwalkan pemeliharaan untuk server dalam wewenang.",
+            )
+        if scope_type == "server" and not user.can_access_server(server_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Akses ditolak: Anda tidak memiliki wewenang atas server yang dipilih.",
+            )
+        if scope_type in ("servers", "custom"):
+            for sid_str in parsed_ids:
+                if not user.can_access_server(int(sid_str)):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Akses ditolak: Anda tidak memiliki wewenang atas server #{sid_str}.",
+                    )
+
     schedule_type = str(body.get("schedule_type", "once") or "").strip()
     if schedule_type not in ("once", "daily", "weekly"):
         raise HTTPException(status_code=400, detail="Tipe jadwal tidak valid")
@@ -284,6 +321,21 @@ async def api_maintenance_windows_cancel(
     if not mw:
         raise HTTPException(status_code=404, detail="Jadwal pemeliharaan tidak ditemukan")
 
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        is_ok = False
+        if mw.scope_type == "server" and mw.server_id in allowed_ids:
+            is_ok = True
+        elif mw.scope_type in ("servers", "custom") and mw.server_ids:
+            try:
+                sids = [int(x.strip()) for x in mw.server_ids.split(",") if x.strip().isdigit()]
+                if any(sid in allowed_ids for sid in sids):
+                    is_ok = True
+            except Exception:
+                pass
+        if not is_ok:
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas jadwal pemeliharaan ini")
+
     mw.status = "cancelled"
     mw.is_active = 0
     _audit(
@@ -321,6 +373,21 @@ async def api_maintenance_windows_complete(
     mw = db.query(MaintenanceWindow).filter(MaintenanceWindow.id == wid).first()
     if not mw:
         raise HTTPException(status_code=404, detail="Jadwal pemeliharaan tidak ditemukan")
+
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        is_ok = False
+        if mw.scope_type == "server" and mw.server_id in allowed_ids:
+            is_ok = True
+        elif mw.scope_type in ("servers", "custom") and mw.server_ids:
+            try:
+                sids = [int(x.strip()) for x in mw.server_ids.split(",") if x.strip().isdigit()]
+                if any(sid in allowed_ids for sid in sids):
+                    is_ok = True
+            except Exception:
+                pass
+        if not is_ok:
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas jadwal pemeliharaan ini")
 
     mw.status = "completed"
     mw.is_active = 0
@@ -361,6 +428,21 @@ async def api_maintenance_windows_delete(
     mw = db.query(MaintenanceWindow).filter(MaintenanceWindow.id == wid).first()
     if not mw:
         raise HTTPException(status_code=404, detail="Jadwal pemeliharaan tidak ditemukan")
+
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        is_ok = False
+        if mw.scope_type == "server" and mw.server_id in allowed_ids:
+            is_ok = True
+        elif mw.scope_type in ("servers", "custom") and mw.server_ids:
+            try:
+                sids = [int(x.strip()) for x in mw.server_ids.split(",") if x.strip().isdigit()]
+                if any(sid in allowed_ids for sid in sids):
+                    is_ok = True
+            except Exception:
+                pass
+        if not is_ok:
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas jadwal pemeliharaan ini")
 
     title = mw.title
     server_id = mw.server_id

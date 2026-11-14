@@ -87,9 +87,9 @@ def _render_profile_page(
         except Exception:
             rec_count = 0
 
-    can_manage_users = user.is_master_admin() or user.has_perm("can_manage_users")
-    can_manage_viewers = can_manage_users or user.has_perm("can_manage_viewers")
-    can_manage_branding = user.is_master_admin() or user.role == "operator"
+    can_manage_users = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
+    can_manage_viewers = can_manage_users or (user.allowed_server_ids is None and user.has_perm("can_manage_viewers"))
+    can_manage_branding = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
 
     users_list = []
     if user.is_master_admin():
@@ -334,9 +334,9 @@ async def profile_update_branding(
 ):
     """Simpan identitas organisasi, logo, unit kerja, pesan operasional (MOTD), dan preferensi tampilan."""
     _verify_csrf_form(request, csrf_token)
-    if not (user.is_master_admin() or user.role == "operator"):
+    if not (user.is_master_admin() or (user.role == "operator" and user.allowed_server_ids is None and user.has_perm("can_manage_users"))):
         raise HTTPException(
-            status_code=403, detail="Hanya Master Admin atau Operator yang dapat mengubah identitas sistem."
+            status_code=403, detail="Hanya Master Admin atau Operator Utama Global yang dapat mengubah identitas sistem."
         )
 
     clean_org_name = (org_name or "").strip()[:100]
@@ -471,8 +471,8 @@ async def api_user_add(
     db: Session = Depends(get_db),
 ):
     """Pendaftaran pengguna baru via API."""
-    if not (user.is_master_admin() or user.has_perm("can_manage_users")):
-        raise HTTPException(status_code=403, detail="Akses ditolak")
+    if not (user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Hanya Master Admin atau Operator Utama Global yang dapat mengelola pengguna.")
     username = _clean_str(payload.get("username", ""), "", 64).strip()
     password = str(payload.get("password", "")).strip()
     role = payload.get("role", "operator")
@@ -505,8 +505,8 @@ def api_user_delete(
     db: Session = Depends(get_db),
 ):
     """Penghapusan akun pengguna via API."""
-    if not (user.is_master_admin() or user.has_perm("can_manage_users")):
-        raise HTTPException(status_code=403, detail="Akses ditolak")
+    if not (user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Hanya Master Admin atau Operator Utama Global yang dapat mengelola pengguna.")
     target = db.query(User).filter(User.id == uid).first()
     if not target:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
@@ -531,8 +531,8 @@ async def user_add_submit(
     user = get_current_user(request, db)
     if not user or user.is_viewer():
         return RedirectResponse("/", status_code=303)
-    can_manage_users = user.is_master_admin() or user.has_perm("can_manage_users")
-    can_manage_viewers = can_manage_users or user.has_perm("can_manage_viewers")
+    can_manage_users = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
+    can_manage_viewers = can_manage_users or (user.allowed_server_ids is None and user.has_perm("can_manage_viewers"))
     if not can_manage_viewers:
         return RedirectResponse("/profile?tab=users", status_code=303)
     _verify_csrf_form(request, csrf_token)
@@ -625,8 +625,8 @@ async def user_edit_submit(
     user = get_current_user(request, db)
     if not user or user.is_viewer():
         return RedirectResponse("/", status_code=303)
-    can_manage_users = user.is_master_admin() or user.has_perm("can_manage_users")
-    can_manage_viewers = can_manage_users or user.has_perm("can_manage_viewers")
+    can_manage_users = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
+    can_manage_viewers = can_manage_users or (user.allowed_server_ids is None and user.has_perm("can_manage_viewers"))
     if uid != user.id and not can_manage_viewers:
         return RedirectResponse("/profile?tab=users", status_code=303)
     _verify_csrf_form(request, csrf_token)
@@ -746,8 +746,8 @@ def user_delete(
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
-    can_manage_users = user.is_master_admin() or user.has_perm("can_manage_users")
-    can_manage_viewers = can_manage_users or user.has_perm("can_manage_viewers")
+    can_manage_users = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
+    can_manage_viewers = can_manage_users or (user.allowed_server_ids is None and user.has_perm("can_manage_viewers"))
     if not can_manage_viewers:
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
@@ -822,8 +822,8 @@ def user_toggle_active(
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
-    can_manage_users = user.is_master_admin() or user.has_perm("can_manage_users")
-    can_manage_viewers = can_manage_users or user.has_perm("can_manage_viewers")
+    can_manage_users = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
+    can_manage_viewers = can_manage_users or (user.allowed_server_ids is None and user.has_perm("can_manage_viewers"))
     if not can_manage_viewers:
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
@@ -931,8 +931,8 @@ def api_user_2fa_init(
     if user.is_viewer():
         raise HTTPException(status_code=403, detail="Akses ditolak: Viewer tidak memiliki izin manajemen pengguna")
 
-    can_manage_users = user.is_master_admin() or user.has_perm("can_manage_users")
-    can_manage_viewers = can_manage_users or user.has_perm("can_manage_viewers")
+    can_manage_users = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
+    can_manage_viewers = can_manage_users or (user.allowed_server_ids is None and user.has_perm("can_manage_viewers"))
     if not can_manage_viewers:
         raise HTTPException(status_code=403, detail="Akses ditolak: izin manajemen pengguna diperlukan")
 
@@ -975,8 +975,8 @@ def api_user_2fa_confirm(
     if user.is_viewer():
         raise HTTPException(status_code=403, detail="Akses ditolak: Viewer tidak memiliki izin manajemen pengguna")
 
-    can_manage_users = user.is_master_admin() or user.has_perm("can_manage_users")
-    can_manage_viewers = can_manage_users or user.has_perm("can_manage_viewers")
+    can_manage_users = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
+    can_manage_viewers = can_manage_users or (user.allowed_server_ids is None and user.has_perm("can_manage_viewers"))
     if not can_manage_viewers:
         raise HTTPException(status_code=403, detail="Akses ditolak: izin manajemen pengguna diperlukan")
 
@@ -1037,8 +1037,8 @@ def api_user_2fa_disable(
     if user.is_viewer():
         raise HTTPException(status_code=403, detail="Akses ditolak: Viewer tidak memiliki izin manajemen pengguna")
 
-    can_manage_users = user.is_master_admin() or user.has_perm("can_manage_users")
-    can_manage_viewers = can_manage_users or user.has_perm("can_manage_viewers")
+    can_manage_users = user.is_master_admin() or (user.allowed_server_ids is None and user.has_perm("can_manage_users"))
+    can_manage_viewers = can_manage_users or (user.allowed_server_ids is None and user.has_perm("can_manage_viewers"))
     if not can_manage_viewers:
         raise HTTPException(status_code=403, detail="Akses ditolak: izin manajemen pengguna diperlukan")
 

@@ -303,16 +303,18 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 
             all_open_problems.append(item)
 
-    # Tambahkan insiden dari Synthetic Probing mandiri (tanpa server_id)
-    standalone_probs = (
-        db.query(ServerProblem)
-        .filter(
-            ServerProblem.server_id.is_(None),
-            ServerProblem.probe_id.isnot(None),
-            ServerProblem.resolved_at.is_(None),
+    # Tambahkan insiden dari Synthetic Probing mandiri (tanpa server_id) hanya untuk Master Admin / Operator Global
+    standalone_probs = []
+    if user.allowed_server_ids is None:
+        standalone_probs = (
+            db.query(ServerProblem)
+            .filter(
+                ServerProblem.server_id.is_(None),
+                ServerProblem.probe_id.isnot(None),
+                ServerProblem.resolved_at.is_(None),
+            )
+            .all()
         )
-        .all()
-    )
     if standalone_probs:
         probes_map = {p.id: p for p in db.query(ProbeTarget).all()}
         for sp in standalone_probs:
@@ -477,8 +479,19 @@ def problems_page(request: Request, db: Session = Depends(get_db)):
 
     if user.allowed_server_ids is not None:
         allowed_ids = set(user.get_allowed_server_ids())
-        open_problems = [p for p in open_problems if p.get("server_id") is None or p.get("server_id") in allowed_ids]
-        recent_resolved = [p for p in recent_resolved if p.get("server_id") is None or p.get("server_id") in allowed_ids]
+        probes_srv_map = {pr.id: pr.server_id for pr in db.query(ProbeTarget).all()}
+        open_problems = [
+            p
+            for p in open_problems
+            if (p.get("server_id") and p.get("server_id") in allowed_ids)
+            or (p.get("probe_id") and probes_srv_map.get(p.get("probe_id")) in allowed_ids)
+        ]
+        recent_resolved = [
+            p
+            for p in recent_resolved
+            if (p.get("server_id") and p.get("server_id") in allowed_ids)
+            or (p.get("probe_id") and probes_srv_map.get(p.get("probe_id")) in allowed_ids)
+        ]
 
     all_servers = filter_servers_for_user(db.query(Server), user).order_by(Server.hostname).all()
     servers_total = len(all_servers)
@@ -597,7 +610,12 @@ def api_alerts(
     )
     if user.allowed_server_ids is not None:
         allowed_ids = set(user.get_allowed_server_ids())
-        open_problems = [r for r in open_problems if r.server_id is None or r.server_id in allowed_ids]
+        open_problems = [
+            r
+            for r in open_problems
+            if (r.server_id and r.server_id in allowed_ids)
+            or (r.probe_id and probes_obj_map.get(r.probe_id) and probes_obj_map[r.probe_id].server_id in allowed_ids)
+        ]
 
     open_danger = [r for r in open_problems if r.severity == "danger" and get_effective_tier(r) == 1]
     open_average = [r for r in open_problems if r.severity == "average" and get_effective_tier(r) == 1]
@@ -808,8 +826,19 @@ def api_problems(
 
     if user.allowed_server_ids is not None:
         allowed_ids = set(user.get_allowed_server_ids())
-        open_problems = [p for p in open_problems if p.get("server_id") is None or p.get("server_id") in allowed_ids]
-        recent_resolved = [p for p in recent_resolved if p.get("server_id") is None or p.get("server_id") in allowed_ids]
+        probes_srv_map = {pr.id: pr.server_id for pr in db.query(ProbeTarget).all()}
+        open_problems = [
+            p
+            for p in open_problems
+            if (p.get("server_id") and p.get("server_id") in allowed_ids)
+            or (p.get("probe_id") and probes_srv_map.get(p.get("probe_id")) in allowed_ids)
+        ]
+        recent_resolved = [
+            p
+            for p in recent_resolved
+            if (p.get("server_id") and p.get("server_id") in allowed_ids)
+            or (p.get("probe_id") and probes_srv_map.get(p.get("probe_id")) in allowed_ids)
+        ]
 
     open_serialized = [_serialize(p) for p in open_problems]
     resolved_serialized = [_serialize(p) for p in recent_resolved]

@@ -165,7 +165,7 @@ def problem_block_ip(
     if not user or not user.has_perm("can_firewall"):
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=False, redirect_tab="masalah")
+    server, err_resp = _check_server_online(db, sid, is_json=False, redirect_tab="masalah", user=user)
     if err_resp:
         return err_resp
     extra = db.query(ServerExtras).filter(ServerExtras.server_id == sid).first()
@@ -219,7 +219,7 @@ def firewall_block_ip(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall", user=user)
     if err_resp:
         return err_resp
     ip_clean = ip.strip()
@@ -278,7 +278,7 @@ def firewall_unblock_ip(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall", user=user)
     if err_resp:
         return err_resp
     ip_clean = ip.strip()
@@ -316,7 +316,7 @@ def firewall_enable(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall", user=user)
     if err_resp:
         return err_resp
 
@@ -389,7 +389,7 @@ def firewall_disable(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall", user=user)
     if err_resp:
         return err_resp
 
@@ -462,7 +462,7 @@ def firewall_reload(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="firewall", user=user)
     if err_resp:
         return err_resp
 
@@ -522,7 +522,7 @@ def process_kill(
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
     is_json = request.headers.get("accept") == "application/json"
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="proses")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="proses", user=user)
     if err_resp:
         return err_resp
 
@@ -579,7 +579,7 @@ def problem_restart_agent(
     if not user or not user.has_perm("can_services"):
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=False, redirect_tab="masalah")
+    server, err_resp = _check_server_online(db, sid, is_json=False, redirect_tab="masalah", user=user)
     if err_resp:
         return err_resp
     _enqueue_mitigation(db, sid, "restart_agent", issued_by=user.username)
@@ -610,7 +610,7 @@ def server_agent_update(
         request.headers.get("accept") == "application/json"
         or request.headers.get("x-requested-with") == "XMLHttpRequest"
     )
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="layanan")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="layanan", user=user)
     if err_resp:
         return err_resp
 
@@ -683,7 +683,7 @@ def _host_control(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json)
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, user=user)
     if err_resp:
         return err_resp
 
@@ -816,7 +816,7 @@ def server_user_create(
         return RedirectResponse("/", status_code=303)
     token = csrf_token or request.headers.get("X-CSRF-Token", "")
     _verify_csrf_form(request, token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun", user=user)
     if err_resp:
         return err_resp
     u_clean = username.strip().lower()
@@ -860,7 +860,7 @@ def server_user_lock(
         return RedirectResponse("/", status_code=303)
     token = csrf_token or request.headers.get("X-CSRF-Token", "")
     _verify_csrf_form(request, token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun", user=user)
     if err_resp:
         return err_resp
     u_clean = username.strip().lower()
@@ -905,7 +905,7 @@ def server_user_unlock(
         return RedirectResponse("/", status_code=303)
     token = csrf_token or request.headers.get("X-CSRF-Token", "")
     _verify_csrf_form(request, token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun", user=user)
     if err_resp:
         return err_resp
     u_clean = username.strip().lower()
@@ -953,7 +953,7 @@ def server_user_delete(
         return RedirectResponse("/", status_code=303)
     token = csrf_token or request.headers.get("X-CSRF-Token", "")
     _verify_csrf_form(request, token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun", user=user)
     if err_resp:
         return err_resp
     u_clean = username.strip().lower()
@@ -1037,7 +1037,7 @@ async def server_session_terminate(
 
     token = csrf_token or request.headers.get("X-CSRF-Token", "")
     _verify_csrf_form(request, token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="akun", user=user)
     if err_resp:
         return err_resp
     clean_tty = tty.strip().lstrip("/dev/")
@@ -1087,7 +1087,7 @@ def server_cron_add(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="cron")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="cron", user=user)
     if err_resp:
         return err_resp
     id_clean = ident.strip()
@@ -1138,7 +1138,7 @@ def server_cron_toggle(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="cron")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="cron", user=user)
     if err_resp:
         return err_resp
     id_clean = ident.strip()
@@ -1175,7 +1175,7 @@ def server_cron_delete(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="cron")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="cron", user=user)
     if err_resp:
         return err_resp
     id_clean = ident.strip()
@@ -1210,7 +1210,7 @@ def server_cron_run(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="cron")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="cron", user=user)
     if err_resp:
         return err_resp
     cmd_clean = command.strip()
@@ -1251,7 +1251,7 @@ def server_port_rule(
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
     _verify_csrf_form(request, csrf_token)
-    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="ports")
+    server, err_resp = _check_server_online(db, sid, is_json=is_json, redirect_tab="ports", user=user)
     if err_resp:
         return err_resp
     p_clean = port.strip()
@@ -1294,7 +1294,7 @@ def server_ssl_add_path(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not user.has_perm("can_ssl"):
+    if not user or not user.has_perm("can_ssl") or not user.can_access_server(sid):
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
@@ -1332,7 +1332,7 @@ def server_ssl_remove_path(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not user.has_perm("can_ssl"):
+    if not user or not user.has_perm("can_ssl") or not user.can_access_server(sid):
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
@@ -1373,7 +1373,7 @@ def server_fim_scan(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not (user.is_master_admin() or user.is_operator()):
+    if not user or not (user.is_master_admin() or user.is_operator()) or not user.can_access_server(sid):
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
@@ -1411,7 +1411,7 @@ def server_fim_rebaseline(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not (user.is_master_admin() or user.is_operator()):
+    if not user or not (user.is_master_admin() or user.is_operator()) or not user.can_access_server(sid):
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
@@ -1450,7 +1450,7 @@ def server_fim_add_path(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not (user.is_master_admin() or user.is_operator()):
+    if not user or not (user.is_master_admin() or user.is_operator()) or not user.can_access_server(sid):
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)
@@ -1511,7 +1511,7 @@ def server_fim_remove_path(
 ):
     user = get_current_user(request, db)
     is_json = "application/json" in request.headers.get("accept", "")
-    if not user or not (user.is_master_admin() or user.is_operator()):
+    if not user or not (user.is_master_admin() or user.is_operator()) or not user.can_access_server(sid):
         if is_json:
             return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
         return RedirectResponse("/", status_code=303)

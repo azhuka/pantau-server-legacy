@@ -78,6 +78,12 @@ def api_probes_list(
         raise HTTPException(status_code=401, detail="Harap login terlebih dahulu")
 
     query = db.query(ProbeTarget).order_by(ProbeTarget.name)
+    all_probes_q = db.query(ProbeTarget)
+
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        query = query.filter(ProbeTarget.server_id.isnot(None), ProbeTarget.server_id.in_(allowed_ids))
+        all_probes_q = all_probes_q.filter(ProbeTarget.server_id.isnot(None), ProbeTarget.server_id.in_(allowed_ids))
 
     if type and type != "all":
         query = query.filter(ProbeTarget.probe_type == type)
@@ -90,7 +96,7 @@ def api_probes_list(
         s = f"%{search.strip()}%"
         query = query.filter(or_(ProbeTarget.name.like(s), ProbeTarget.target.like(s)))
 
-    all_probes = db.query(ProbeTarget).all()
+    all_probes = all_probes_q.all()
     filtered_probes = query.all()
 
     total = len(all_probes)
@@ -112,7 +118,7 @@ def api_probes_list(
     uptimes_30 = [p.uptime_30d for p in all_probes if p.uptime_30d is not None and p.is_active]
     avg_uptime_30d = round(sum(uptimes_30) / len(uptimes_30), 2) if uptimes_30 else 100.0
 
-    servers_map = {s.id: s.hostname for s in db.query(Server).all()}
+    servers_map = {s.id: s.hostname for s in filter_servers_for_user(db.query(Server), user).all()}
 
     probes_out = []
     for p in filtered_probes:
@@ -209,6 +215,17 @@ async def api_probe_create(
 
     server_id = body.get("server_id")
     server_id = int(server_id) if server_id and str(server_id).isdigit() else None
+    if user.allowed_server_ids is not None:
+        if not server_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Akses ditolak: Operator dengan cakupan server terbatas wajib memilih server target yang diizinkan.",
+            )
+        if not user.can_access_server(server_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Akses ditolak: Anda tidak memiliki wewenang atas server yang dipilih.",
+            )
 
     interval = int(body.get("interval_seconds", 60) or 60)
     interval = max(10, min(86400, interval))
@@ -330,6 +347,13 @@ def api_probes_open_problems(
         )
         .all()
     )
+    if user.allowed_server_ids is not None:
+        allowed_ids = set(user.get_allowed_server_ids())
+        allowed_probe_ids = {
+            p.id for p in db.query(ProbeTarget.id).filter(ProbeTarget.server_id.in_(allowed_ids)).all()
+        }
+        standalone_probs = [sp for sp in standalone_probs if sp.probe_id in allowed_probe_ids]
+
     if not standalone_probs:
         return []
     probes_map = {p.id: p for p in db.query(ProbeTarget).all()}
@@ -391,8 +415,11 @@ def api_probe_get(
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()
     if not probe:
         raise HTTPException(status_code=404, detail="Endpoint pantau tidak ditemukan")
+    if user.allowed_server_ids is not None:
+        if not probe.server_id or not user.can_access_server(probe.server_id):
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas endpoint ini")
 
-    servers_map = {s.id: s.hostname for s in db.query(Server).all()}
+    servers_map = {s.id: s.hostname for s in filter_servers_for_user(db.query(Server), user).all()}
     recent_logs = (
         db.query(ProbeLog)
         .filter(ProbeLog.probe_id == pid)
@@ -466,6 +493,9 @@ async def api_probe_update(
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()
     if not probe:
         raise HTTPException(status_code=404, detail="Endpoint pantau tidak ditemukan")
+    if user.allowed_server_ids is not None:
+        if not probe.server_id or not user.can_access_server(probe.server_id):
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas endpoint ini")
 
     try:
         body = await request.json()
@@ -496,6 +526,17 @@ async def api_probe_update(
 
     server_id = body.get("server_id")
     server_id = int(server_id) if server_id and str(server_id).isdigit() else None
+    if user.allowed_server_ids is not None:
+        if not server_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Akses ditolak: Operator dengan cakupan server terbatas wajib memilih server target yang diizinkan.",
+            )
+        if not user.can_access_server(server_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Akses ditolak: Anda tidak memiliki wewenang atas server yang dipilih.",
+            )
 
     probe.name = name
     probe.probe_type = probe_type
@@ -569,6 +610,9 @@ def api_probe_delete(
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()
     if not probe:
         raise HTTPException(status_code=404, detail="Endpoint pantau tidak ditemukan")
+    if user.allowed_server_ids is not None:
+        if not probe.server_id or not user.can_access_server(probe.server_id):
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas endpoint ini")
 
     name = probe.name
     sid = probe.server_id
@@ -593,6 +637,9 @@ def api_probe_toggle(
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()
     if not probe:
         raise HTTPException(status_code=404, detail="Endpoint pantau tidak ditemukan")
+    if user.allowed_server_ids is not None:
+        if not probe.server_id or not user.can_access_server(probe.server_id):
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas endpoint ini")
 
     new_active = 0 if probe.is_active else 1
     probe.is_active = new_active
@@ -638,6 +685,9 @@ async def api_probe_test_now(
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()
     if not probe:
         raise HTTPException(status_code=404, detail="Endpoint pantau tidak ditemukan")
+    if user.allowed_server_ids is not None:
+        if not probe.server_id or not user.can_access_server(probe.server_id):
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas endpoint ini")
 
     p_data = {
         "id": probe.id,
@@ -716,6 +766,9 @@ def api_probe_history(
     probe = db.query(ProbeTarget).filter(ProbeTarget.id == pid).first()
     if not probe:
         raise HTTPException(status_code=404, detail="Probe target tidak ditemukan")
+    if user.allowed_server_ids is not None:
+        if not probe.server_id or not user.can_access_server(probe.server_id):
+            raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki wewenang atas endpoint ini")
 
     limit = max(10, min(500, limit))
     logs = (

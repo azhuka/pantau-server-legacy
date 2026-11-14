@@ -91,8 +91,19 @@ def _server_stale(srv: Optional[Server]) -> bool:
     return (datetime.now(timezone.utc) - ls).total_seconds() > OFFLINE_AFTER_SECONDS
 
 
-def _check_server_online(db: Session, sid: int, is_json: bool = False, redirect_tab: str = ""):
-    """Validasi server ada, aktif, dan online (agen terhubung). Tolak bila offline."""
+def _check_server_online(
+    db: Session,
+    sid: int,
+    is_json: bool = False,
+    redirect_tab: str = "",
+    user: Optional[Any] = None,
+):
+    """Validasi server ada, aktif, dan online (agen terhubung). Tolak bila offline atau di luar wewenang."""
+    if user is not None and not user.can_access_server(sid):
+        msg = "Akses ditolak: Anda tidak memiliki wewenang atas server ini"
+        if is_json:
+            return None, JSONResponse({"ok": False, "detail": msg}, status_code=403)
+        return None, RedirectResponse("/servers", status_code=303)
     server = db.query(Server).filter(Server.id == sid).first()
     if not server or not getattr(server, "is_active", 1):
         if is_json:
