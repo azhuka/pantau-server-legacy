@@ -685,16 +685,16 @@
             <span class="probe-field-help" id="formTargetHelp">url aplikasi yang ingin dicek. (https://... atau http://IP:Port).</span>
           </div>
           <div class="probe-form-group">
-            <label for="formServerId">Tautkan ke Server {% if user.allowed_server_ids is not None %}*{% else %}(Opsional){% endif %}</label>
+            <label for="formServerId">Tautkan ke Server {% if user.allowed_server_ids is not none %}*{% else %}(Opsional){% endif %}</label>
             <select id="formServerId">
-              {% if user.allowed_server_ids is None %}
+              {% if user.allowed_server_ids is none %}
               <option value="">-- Kosong (Standalone / Eksternal) --</option>
               {% endif %}
               {% for s in servers %}
-              <option value="{{ s.id }}" {% if loop.first and user.allowed_server_ids is not None %}selected{% endif %}>{{ s.hostname }} ({{ s.ip_address }})</option>
+              <option value="{{ s.id }}" {% if loop.first and user.allowed_server_ids is not none %}selected{% endif %}>{{ s.hostname }} ({{ s.ip_address }})</option>
               {% endfor %}
             </select>
-            <span class="probe-field-help">{% if user.allowed_server_ids is not None %}Pilih server klien dalam wewenang Anda.{% else %}Aplikasi yang berjalan di server klien. Kosongkan jika memantau aplikasi eksternal.{% endif %}</span>
+            <span class="probe-field-help">{% if user.allowed_server_ids is not none %}Pilih server klien dalam wewenang Anda.{% else %}Aplikasi yang berjalan di server klien. Kosongkan jika memantau aplikasi eksternal.{% endif %}</span>
           </div>
         </div>
 
