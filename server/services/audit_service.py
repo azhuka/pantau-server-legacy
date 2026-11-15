@@ -393,6 +393,7 @@ def _audit_rows(
     status_filter: str = "",
     start_date: str = "",
     end_date: str = "",
+    allowed_server_ids: Optional[List[int]] = None,
 ) -> List[dict]:
     rows: List[dict] = []
     now_utc = datetime.utcnow()
@@ -427,7 +428,14 @@ def _audit_rows(
         audit_query = audit_query.filter(AuditLog.created_at >= cutoff)
     if cutoff_end is not None:
         audit_query = audit_query.filter(AuditLog.created_at <= cutoff_end)
-    if server_id is not None:
+    if allowed_server_ids is not None:
+        if server_id is not None:
+            if server_id not in allowed_server_ids:
+                return []
+            audit_query = audit_query.filter(AuditLog.server_id == server_id)
+        else:
+            audit_query = audit_query.filter(AuditLog.server_id.in_(allowed_server_ids))
+    elif server_id is not None:
         audit_query = audit_query.filter(AuditLog.server_id == server_id)
 
     items = audit_query.order_by(desc(AuditLog.created_at)).limit(limit).all()

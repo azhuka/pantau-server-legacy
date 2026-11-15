@@ -354,6 +354,13 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.6
+
+### v4.11.6 (2026-11-16)
+- **UI/UX & Emergency Exit:** Penambahan tombol tutup header dan penutup backdrop pada seluruh modal File Manager (`file_manager.html`).
+- **Backend Optimization:** Penegakan kueri SQL langsung pada `_audit_rows` (`audit_service.py`) menggunakan `allowed_server_ids` guna mencegah pemotongan baris audit log untuk operator server terbatas.
+
+
 ## Versi 4.11.5
 
 - **Templates**: Memperbaiki sintaksis Jinja2 test 'is none' pada server/templates/probing.html untuk mengeliminasi galat 500.

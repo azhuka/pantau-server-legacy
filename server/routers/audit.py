@@ -87,6 +87,8 @@ def api_audit(
     server_id = int(server.strip()) if server.strip().isdigit() else None
     status_clean = status.strip().upper()
 
+    user_allowed_sids = user_actor.get_allowed_server_ids() if user_actor.allowed_server_ids is not None else None
+
     rows = _audit_rows(
         db,
         limit=min(limit, 1000),
@@ -96,6 +98,7 @@ def api_audit(
         period=period_clean,
         server_id=server_id,
         status_filter=status_clean,
+        allowed_server_ids=user_allowed_sids,
     )
     if not user_actor.is_master_admin():
         master_admin_names = {u.username for u in db.query(User).filter(User.role == "master_admin").all()}
@@ -169,6 +172,8 @@ def audit_page(
     start_date_clean = start_date.strip()
     end_date_clean = end_date.strip()
 
+    user_allowed_sids = user_actor.get_allowed_server_ids() if user_actor.allowed_server_ids is not None else None
+
     rows = _audit_rows(
         db,
         limit=500,
@@ -180,6 +185,7 @@ def audit_page(
         status_filter=status_clean,
         start_date=start_date_clean,
         end_date=end_date_clean,
+        allowed_server_ids=user_allowed_sids,
     )
     if not user_actor.is_master_admin():
         master_admin_names = {u.username for u in db.query(User).filter(User.role == "master_admin").all()}
