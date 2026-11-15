@@ -480,7 +480,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.6"
+AGENT_VERSION = "4.11.7"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -1961,6 +1961,7 @@ def _exec_update_agent(cfg: dict, command: dict) -> dict:
                 print(f"[OTA] Gagal reload systemd daemon: {e}")
 
         try:
+            ensure_pantau_file_updated(force=True)
             ensure_pantau_user_updated(force=True)
             ensure_pantau_apt_updated()
             ensure_pantau_firewall_updated(force=True)
@@ -7450,6 +7451,7 @@ RCFILE=$(mktemp /tmp/pantau-shellrc.XXXXXX)
 chmod 644 "$RCFILE"
 trap 'rm -f "$RCFILE"' EXIT INT TERM
 cat >"$RCFILE" <<'EOF'
+umask 027
 PS1='\u@\h:\w\$ '
 PS2='> '
 export HISTFILE="$HOME/.bash_history"
@@ -7645,7 +7647,7 @@ def ensure_pantau_shell_updated(force: bool = False) -> bool:
                     cur_content = f.read()
             except Exception:
                 pass
-            if 'TARGET_USER="operator"' in cur_content and "__pantau_prompt_audit" in cur_content and "run_as_target" in cur_content:
+            if 'TARGET_USER="operator"' in cur_content and "__pantau_prompt_audit" in cur_content and "run_as_target" in cur_content and "umask 027" in cur_content:
                 return True
 
         content_to_write = PANTAU_SHELL_SCRIPT_BODY.strip() + "\n"
@@ -7675,6 +7677,962 @@ def ensure_pantau_shell_updated(force: bool = False) -> bool:
         print(f"[SHELL] ensure_pantau_shell_updated error: {e}")
     return False
 
+
+
+
+PANTAU_FILE_SCRIPT_BODY = r'''#!/usr/bin/env python3
+"""
+pantau-file - Wrapper manajemen file & direktori untuk Agen Pantau.
+===================================================================
+Dijalankan melalui sudo NOPASSWD oleh user 'pantau' ketika admin dashboard
+membuka tab 'Berkas' (File Manager) pada halaman Rincian Server.
+
+Fitur & Guardrails:
+  - Eksekusi aksi: ls, cat, write, mkdir, touch, rm, chmod, chown, read_binary, write_binary.
+  - Guardrail: menolak penghapusan direktori sistem kritis (/, /etc, /bin, /boot, /usr, dll).
+  - Auto-backup: menyimpan <file>.bak.<timestamp> dan <file>.bak sebelum menulis perubahan.
+  - Penulisan atomic (tempfile di direktori sama + fsync + os.replace) mempertahankan mode & kepemilikan.
+  - Deteksi biner otomatis pada mode teks untuk mencegah kerusakan file biner.
+  - I/O berbasis JSON terstruktur.
+"""
+
+import sys
+import os
+import stat
+import json
+import shutil
+import base64
+import time
+import tempfile
+import pwd
+import grp
+import hashlib
+from pathlib import Path
+
+# Direktori dan berkas kritis yang mutlak dilarang dimanipulasi/dihapus
+PROTECTED_PATHS = {
+    "/", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64",
+    "/proc", "/sys", "/usr", "/var", "/home", "/root", "/opt", "/run",
+    "/tmp", "/srv", "/mnt", "/media", "/sbin", "/vmlinuz", "/initrd.img"
+}
+
+SYSTEM_PROTECTED_FILES = {
+    "/etc/shadow", "/etc/shadow-", "/etc/gshadow", "/etc/gshadow-",
+    "/etc/passwd", "/etc/passwd-", "/etc/group", "/etc/group-",
+    "/etc/sudoers", "/etc/ld.so.preload", "/etc/securetty"
+}
+
+SYSTEM_PROTECTED_PREFIXES = (
+    "/etc/sudoers.d", "/etc/pam.d", "/etc/security",
+    "/boot", "/bin", "/sbin", "/usr/bin", "/usr/sbin", "/lib", "/lib32", "/lib64",
+    "/proc", "/sys", "/dev"
+)
+
+MAX_TEXT_SIZE = 3 * 1024 * 1024       # 3 MB batas baca text editor
+MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024 # 100 MB batas download lewat web
+
+
+def err_exit(msg: str, extra: dict | None = None) -> None:
+    res = {"ok": False, "error": msg}
+    if extra:
+        res.update(extra)
+    print(json.dumps(res, ensure_ascii=False))
+    sys.exit(1)
+
+
+def check_path_protection(path: str, for_write: bool = False) -> None:
+    if not path:
+        return
+    abs_p = os.path.abspath(path)
+    real_p = os.path.realpath(abs_p)
+
+    # Izinkan pembaruan wrapper pantau dan konfigurasi /etc/pantau
+    if for_write:
+        if abs_p.startswith("/etc/pantau") or real_p.startswith("/etc/pantau"):
+            return
+        if abs_p.startswith("/usr/local/sbin/pantau-") or real_p.startswith("/usr/local/sbin/pantau-"):
+            return
+
+    for p in (abs_p, real_p):
+        if p in PROTECTED_PATHS:
+            err_exit(f"Aksi ditolak: '{path}' adalah direktori sistem kritis yang dilindungi.")
+        if p in SYSTEM_PROTECTED_FILES:
+            err_exit(f"Aksi ditolak: '{path}' adalah berkas otentikasi sistem penting yang dilindungi.")
+        for pref in SYSTEM_PROTECTED_PREFIXES:
+            if p == pref or p.startswith(pref + "/"):
+                err_exit(f"Aksi ditolak: '{path}' berada di direktori sistem terlindungi ({pref}).")
+        if for_write:
+            if p.endswith("/.ssh") or "/.ssh/" in p:
+                err_exit(f"Aksi ditolak: '{path}' adalah direktori/berkas otentikasi SSH yang dilindungi.")
+
+
+def ok_exit(data: dict) -> None:
+    data["ok"] = True
+    print(json.dumps(data, ensure_ascii=False))
+    sys.exit(0)
+
+
+def get_owner_group(st: os.stat_result) -> tuple[str, str]:
+    try:
+        owner = pwd.getpwuid(st.st_uid).pw_name
+    except (KeyError, OverflowError):
+        owner = str(st.st_uid)
+    try:
+        group = grp.getgrgid(st.st_gid).gr_name
+    except (KeyError, OverflowError):
+        group = str(st.st_gid)
+    return owner, group
+
+
+def get_parent_ownership(path: str) -> tuple[int, int]:
+    """Mengambil UID dan GID dari direktori induk agar berkas/folder baru mewarisi kepemilikan yang sah."""
+    parent_dir = os.path.dirname(os.path.abspath(path))
+    try:
+        pst = os.stat(parent_dir)
+        return pst.st_uid, pst.st_gid
+    except OSError:
+        return 0, 0
+
+
+def action_hash(path: str) -> None:
+    if not path:
+        err_exit("Path wajib diisi.")
+    path = os.path.abspath(path)
+    if not os.path.exists(path):
+        err_exit(f"Path tidak ditemukan: {path}")
+    try:
+        st = os.stat(path)
+        is_dir = stat.S_ISDIR(st.st_mode)
+        owner, group = get_owner_group(st)
+        oct_mode = oct(st.st_mode & 0o777)[2:].zfill(4)
+        if is_dir:
+            files_map = {}
+            dir_count = 0
+            file_count = 0
+            total_size = 0
+            ignored_dirs = {".git", ".svn", ".cache", "node_modules", "__pycache__", ".idea", ".vscode"}
+            try:
+                for root, dirs, files in os.walk(path, topdown=True, followlinks=False):
+                    dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ignored_dirs]
+                    rel_root = os.path.relpath(root, path)
+                    depth = 0 if rel_root == "." else len(rel_root.split(os.sep))
+                    if depth >= 10:
+                        dirs.clear()
+                        continue
+                    dir_count += len(dirs)
+                    for f in files:
+                        if f.startswith("."):
+                            continue
+                        if file_count >= 5000:
+                            break
+                        full_p = os.path.join(root, f)
+                        rel_f = os.path.relpath(full_p, path)
+                        try:
+                            st_f = os.stat(full_p)
+                        except Exception:
+                            continue
+                        f_own, f_grp = get_owner_group(st_f)
+                        f_perm = oct(st_f.st_mode & 0o777)[2:].zfill(4)
+                        f_sz = st_f.st_size
+                        f_mt = int(st_f.st_mtime)
+                        total_size += f_sz
+                        if f_sz <= 5 * 1024 * 1024:
+                            try:
+                                h_f = hashlib.sha256()
+                                with open(full_p, "rb") as fh:
+                                    while chk := fh.read(65536):
+                                        h_f.update(chk)
+                                f_h = h_f.hexdigest()
+                            except Exception:
+                                f_h = f"meta:{f_perm}:{f_sz}:{f_mt}"
+                        else:
+                            f_h = f"meta:{f_perm}:{f_sz}:{f_mt}"
+                        files_map[rel_f] = {
+                            "size": f_sz,
+                            "mtime": f_mt,
+                            "perm": f_perm,
+                            "owner": f_own,
+                            "group": f_grp,
+                            "sha256": f_h,
+                        }
+                        file_count += 1
+                    if file_count >= 5000:
+                        break
+            except Exception:
+                pass
+            manifest_items = []
+            for k in sorted(files_map.keys())[:1500]:
+                fm = files_map[k]
+                manifest_items.append(f"{k}:{fm['sha256']}:{fm['size']}:{fm['perm']}:{fm['owner']}")
+            manifest_str = f"cnt:{file_count}|dirs:{dir_count}|files:{file_count}|" + ";;".join(manifest_items)
+            dir_hash = hashlib.sha256(manifest_str.encode("utf-8")).hexdigest()
+            ok_exit({
+                "path": path,
+                "is_dir": True,
+                "exists": True,
+                "size": total_size if total_size > 0 else st.st_size,
+                "count": file_count + dir_count,
+                "dir_count": dir_count,
+                "file_count": file_count,
+                "mtime": int(st.st_mtime),
+                "octal_mode": oct_mode,
+                "owner": owner,
+                "group": group,
+                "sha256": dir_hash,
+                "files": files_map,
+            })
+        else:
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                while chunk := f.read(65536):
+                    h.update(chunk)
+            ok_exit({
+                "path": path,
+                "is_dir": False,
+                "exists": True,
+                "size": st.st_size,
+                "mtime": int(st.st_mtime),
+                "octal_mode": oct_mode,
+                "owner": owner,
+                "group": group,
+                "sha256": h.hexdigest()
+            })
+    except Exception as e:
+        err_exit(f"Gagal memproses file/direktori: {e}")
+
+
+def action_ls(path: str) -> None:
+    path = os.path.abspath(path)
+    if not os.path.exists(path):
+        err_exit(f"Path tidak ditemukan: {path}")
+    if not os.path.isdir(path):
+        err_exit(f"Path bukan direktori: {path}")
+
+    items = []
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                try:
+                    is_symlink = entry.is_symlink()
+                    link_target = None
+                    if is_symlink:
+                        try:
+                            link_target = os.readlink(entry.path)
+                        except OSError:
+                            link_target = "?"
+                    
+                    try:
+                        st = entry.stat(follow_symlinks=False)
+                        st_mode = st.st_mode
+                        size = st.st_size
+                        mtime = int(st.st_mtime)
+                        mode_str = stat.filemode(st_mode)
+                        octal_mode = oct(st_mode & 0o777)[2:].zfill(4)
+                        owner, group = get_owner_group(st)
+                    except OSError:
+                        mode_str = "??????????"
+                        octal_mode = "0000"
+                        size = 0
+                        mtime = 0
+                        owner = "?"
+                        group = "?"
+
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                    is_file = entry.is_file(follow_symlinks=False)
+                    
+                    # Deteksi tipe sederhana
+                    ext = os.path.splitext(entry.name)[1].lower()
+
+                    items.append({
+                        "name": entry.name,
+                        "path": entry.path,
+                        "is_dir": is_dir,
+                        "is_file": is_file,
+                        "is_symlink": is_symlink,
+                        "link_target": link_target,
+                        "size": size,
+                        "mode": mode_str,
+                        "octal_mode": octal_mode,
+                        "owner": owner,
+                        "group": group,
+                        "mtime": mtime,
+                        "ext": ext,
+                    })
+                except OSError:
+                    continue
+    except PermissionError:
+        err_exit(f"Akses ditolak membaca direktori: {path}")
+    except OSError as e:
+        err_exit(f"Gagal membaca direktori: {e}")
+
+    # Urutkan: direktori lebih dulu (A-Z), baru file (A-Z)
+    items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+
+    parent = os.path.dirname(path) if path != "/" else None
+
+    # Disk usage info
+    try:
+        du = shutil.disk_usage(path)
+        disk_info = {
+            "total": du.total,
+            "used": du.used,
+            "free": du.free,
+        }
+    except OSError:
+        disk_info = None
+
+    ok_exit({
+        "current_path": path,
+        "parent_path": parent,
+        "items": items,
+        "total_items": len(items),
+        "disk": disk_info,
+    })
+
+
+def is_binary_string(data: bytes) -> bool:
+    if not data:
+        return False
+    if b"\x00" in data:
+        return True
+    # Cek proporsi non-printable
+    text_chars = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)) - {0x7f})
+    non_text = data.translate(None, text_chars)
+    return len(non_text) / len(data) > 0.30
+
+
+def action_cat(path: str, max_bytes: int = MAX_TEXT_SIZE) -> None:
+    path = os.path.abspath(path)
+    if not os.path.exists(path):
+        err_exit(f"File tidak ditemukan: {path}")
+    if os.path.isdir(path):
+        err_exit(f"Path adalah direktori: {path}")
+
+    try:
+        st = os.stat(path)
+    except OSError as e:
+        err_exit(f"Gagal memeriksa file: {e}")
+
+    size = st.st_size
+    if size > max_bytes:
+        err_exit(
+            f"File terlalu besar untuk editor ({size / (1024*1024):.2f} MB > {max_bytes / (1024*1024):.1f} MB). "
+            "Gunakan tombol Unduh untuk mengambil file.",
+            {"is_too_large": True, "size": size}
+        )
+
+    # Deteksi biner
+    try:
+        with open(path, "rb") as f:
+            sample = f.read(8192)
+            if is_binary_string(sample):
+                err_exit(
+                    "File terdeteksi sebagai biner (bukan teks UTF-8). "
+                    "Gunakan tombol Unduh untuk mengambil file.",
+                    {"is_binary": True, "size": size}
+                )
+            f.seek(0)
+            raw = f.read(max_bytes)
+            content = raw.decode("utf-8", errors="replace")
+    except PermissionError:
+        err_exit(f"Akses ditolak membaca file: {path}")
+    except OSError as e:
+        err_exit(f"Gagal membaca file: {e}")
+
+    owner, group = get_owner_group(st)
+    mode_str = stat.filemode(st.st_mode)
+    octal_mode = oct(st.st_mode & 0o777)[2:].zfill(4)
+
+    # Cek apakah ada file backup
+    bak_path = path + ".bak"
+    has_backup = os.path.exists(bak_path)
+
+    ok_exit({
+        "path": path,
+        "content": content,
+        "size": size,
+        "mtime": int(st.st_mtime),
+        "mode": mode_str,
+        "octal_mode": octal_mode,
+        "owner": owner,
+        "group": group,
+        "has_backup": has_backup,
+    })
+
+
+def action_write(path: str, content: str, make_backup: bool = True) -> None:
+    path = os.path.abspath(path)
+    check_path_protection(path, for_write=True)
+    parent_dir = os.path.dirname(path)
+
+    if not os.path.exists(parent_dir):
+        err_exit(f"Direktori induk tidak ditemukan: {parent_dir}")
+    if os.path.isdir(path):
+        err_exit(f"Target adalah direktori: {path}")
+
+    # Catat izin dan kepemilikan file lama jika ada
+    st_orig = None
+    if os.path.exists(path):
+        try:
+            st_orig = os.stat(path)
+        except OSError:
+            pass
+
+    # Buat backup tunggal jika file lama sudah ada dan memiliki isi (> 0 bytes)
+    backup_file = None
+    if make_backup and st_orig and st_orig.st_size > 0:
+        try:
+            backup_file = path + ".bak"
+            if os.path.islink(backup_file):
+                os.unlink(backup_file)
+            shutil.copy2(path, backup_file, follow_symlinks=False)
+        except OSError:
+            # Tetap lanjut tulis tapi beri peringatan di log jika backup gagal
+            pass
+
+    # Penulisan aman (atomic write)
+    try:
+        content_bytes = content.encode("utf-8")
+        tmp_fd, tmp_path = tempfile.mkstemp(prefix="pantau_edit_", dir=parent_dir)
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(content_bytes)
+            f.flush()
+            os.fsync(f.fileno())
+
+        if st_orig:
+            # Kembalikan mode & kepemilikan asli
+            try:
+                os.chmod(tmp_path, st_orig.st_mode)
+                os.chown(tmp_path, st_orig.st_uid, st_orig.st_gid)
+            except OSError:
+                pass
+        else:
+            # File baru: warisi kepemilikan direktori induk, default mode 0644
+            p_uid, p_gid = get_parent_ownership(path)
+            try:
+                os.chmod(tmp_path, 0o644)
+                os.chown(tmp_path, p_uid, p_gid)
+            except OSError:
+                pass
+
+        os.replace(tmp_path, path)
+    except PermissionError:
+        err_exit(f"Akses ditolak menulis ke {path}")
+    except OSError as e:
+        err_exit(f"Gagal menulis file: {e}")
+
+    ok_exit({
+        "path": path,
+        "bytes_written": len(content_bytes),
+        "backup_created": backup_file if (make_backup and st_orig) else None,
+    })
+
+
+def action_mkdir(path: str, mode: str = "0755") -> None:
+    path = os.path.abspath(path)
+    check_path_protection(path, for_write=True)
+    if os.path.exists(path):
+        err_exit(f"Path sudah ada: {path}")
+
+    try:
+        oct_mode = int(mode, 8)
+    except ValueError:
+        oct_mode = 0o755
+
+    try:
+        os.makedirs(path, mode=oct_mode, exist_ok=False)
+        p_uid, p_gid = get_parent_ownership(path)
+        try:
+            os.chown(path, p_uid, p_gid)
+        except OSError:
+            pass
+    except PermissionError:
+        err_exit(f"Akses ditolak membuat direktori: {path}")
+    except OSError as e:
+        err_exit(f"Gagal membuat direktori: {e}")
+
+    ok_exit({"path": path, "created": True})
+
+
+def action_touch(path: str) -> None:
+    path = os.path.abspath(path)
+    check_path_protection(path, for_write=True)
+    if os.path.exists(path):
+        err_exit(f"File sudah ada: {path}")
+
+    try:
+        with open(path, "w") as f:
+            pass
+        os.chmod(path, 0o644)
+        p_uid, p_gid = get_parent_ownership(path)
+        try:
+            os.chown(path, p_uid, p_gid)
+        except OSError:
+            pass
+    except PermissionError:
+        err_exit(f"Akses ditolak membuat file: {path}")
+    except OSError as e:
+        err_exit(f"Gagal membuat file: {e}")
+
+    ok_exit({"path": path, "created": True})
+
+
+def action_rm(path: str) -> None:
+    path = os.path.abspath(path)
+    check_path_protection(path, for_write=False)
+    real_path = os.path.realpath(path)
+
+    # GUARDRAIL KEAMANAN KRITIS
+    if real_path in PROTECTED_PATHS or path in PROTECTED_PATHS:
+        err_exit(f"Aksi ditolak: '{path}' adalah direktori sistem kritis yang dilindungi.")
+
+    # Cek kedalaman path: minimal ada 2 komponen direktori, misal /home/user atau /var/www
+    parts = [p for p in real_path.split("/") if p]
+    if len(parts) < 2:
+        err_exit(f"Aksi ditolak: dilarang menghapus path top-level '{path}'.")
+
+    if not os.path.exists(path) and not os.path.islink(path):
+        err_exit(f"Path tidak ditemukan: {path}")
+
+    try:
+        if os.path.islink(path):
+            os.unlink(path)
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.unlink(path)
+    except PermissionError:
+        err_exit(f"Akses ditolak menghapus {path}")
+    except OSError as e:
+        err_exit(f"Gagal menghapus: {e}")
+
+    ok_exit({"path": path, "deleted": True})
+
+
+def action_rename(old_path: str, new_path: str) -> None:
+    old_path = os.path.abspath(old_path)
+    new_path = os.path.abspath(new_path)
+    check_path_protection(old_path, for_write=False)
+    check_path_protection(new_path, for_write=True)
+    real_old = os.path.realpath(old_path)
+
+    if real_old in PROTECTED_PATHS or old_path in PROTECTED_PATHS:
+        err_exit(f"Aksi ditolak: '{old_path}' adalah direktori sistem kritis yang dilindungi.")
+    if not os.path.exists(old_path) and not os.path.islink(old_path):
+        err_exit(f"File atau folder asal tidak ditemukan: {old_path}")
+    if os.path.exists(new_path) or os.path.islink(new_path):
+        err_exit(f"Target '{new_path}' sudah ada")
+    parent_new = os.path.dirname(new_path)
+    if not os.path.exists(parent_new):
+        err_exit(f"Direktori target tidak ditemukan: {parent_new}")
+
+    try:
+        shutil.move(old_path, new_path)
+    except PermissionError:
+        err_exit(f"Akses ditolak memindahkan/mengganti nama: {old_path}")
+    except OSError as e:
+        err_exit(f"Gagal memindahkan/mengganti nama: {e}")
+
+    ok_exit({"old_path": old_path, "new_path": new_path, "renamed": True})
+
+
+def action_chmod(path: str, mode: str) -> None:
+    path = os.path.abspath(path)
+    check_path_protection(path, for_write=False)
+    if not os.path.exists(path):
+        err_exit(f"Path tidak ditemukan: {path}")
+
+    try:
+        oct_mode = int(mode, 8)
+    except ValueError:
+        err_exit(f"Format mode tidak valid (harus oktal, misal 0644 / 0755): {mode}")
+
+    try:
+        os.chmod(path, oct_mode)
+    except PermissionError:
+        err_exit(f"Akses ditolak mengubah chmod: {path}")
+    except OSError as e:
+        err_exit(f"Gagal mengubah izin file: {e}")
+
+    ok_exit({"path": path, "mode": mode})
+
+
+def action_chown(path: str, owner: str, group: str | None = None) -> None:
+    path = os.path.abspath(path)
+    check_path_protection(path, for_write=False)
+    if not os.path.exists(path):
+        err_exit(f"Path tidak ditemukan: {path}")
+
+    try:
+        shutil.chown(path, user=owner, group=group)
+    except PermissionError:
+        err_exit(f"Akses ditolak mengubah chown: {path}")
+    except (LookupError, OSError) as e:
+        err_exit(f"Gagal mengubah kepemilikan file: {e}")
+
+    ok_exit({"path": path, "owner": owner, "group": group})
+
+
+def action_read_binary(path: str, max_bytes: int = MAX_DOWNLOAD_SIZE) -> None:
+    path = os.path.abspath(path)
+    if not os.path.exists(path):
+        err_exit(f"File tidak ditemukan: {path}")
+    if os.path.isdir(path):
+        err_exit(f"Path adalah direktori: {path}")
+
+    try:
+        st = os.stat(path)
+        size = st.st_size
+        if size > max_bytes:
+            err_exit(f"Ukuran file melampaui batas unduh ({size / (1024*1024):.1f} MB > {max_bytes / (1024*1024):.1f} MB)")
+
+        with open(path, "rb") as f:
+            raw = f.read(max_bytes)
+        b64 = base64.b64encode(raw).decode("ascii")
+    except OSError as e:
+        err_exit(f"Gagal membaca file: {e}")
+
+    ok_exit({
+        "path": path,
+        "filename": os.path.basename(path),
+        "size": size,
+        "data_b64": b64,
+    })
+
+
+def action_write_binary(path: str, data_b64: str) -> None:
+    path = os.path.abspath(path)
+    check_path_protection(path, for_write=True)
+    parent_dir = os.path.dirname(path)
+
+    if not os.path.exists(parent_dir):
+        err_exit(f"Direktori induk tidak ditemukan: {parent_dir}")
+    if os.path.isdir(path):
+        err_exit(f"Target adalah direktori: {path}")
+
+    try:
+        raw = base64.b64decode(data_b64)
+    except Exception as e:
+        err_exit(f"Gagal mendekode data base64: {e}")
+
+    st_orig = None
+    if os.path.exists(path):
+        try:
+            st_orig = os.stat(path)
+        except OSError:
+            pass
+
+    try:
+        tmp_fd, tmp_path = tempfile.mkstemp(prefix="pantau_up_", dir=parent_dir)
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(raw)
+            f.flush()
+            os.fsync(f.fileno())
+
+        if st_orig:
+            try:
+                os.chmod(tmp_path, st_orig.st_mode)
+                os.chown(tmp_path, st_orig.st_uid, st_orig.st_gid)
+            except OSError:
+                pass
+        else:
+            p_uid, p_gid = get_parent_ownership(path)
+            try:
+                os.chmod(tmp_path, 0o644)
+                os.chown(tmp_path, p_uid, p_gid)
+            except OSError:
+                pass
+
+        os.replace(tmp_path, path)
+    except OSError as e:
+        err_exit(f"Gagal menulis file: {e}")
+
+    ok_exit({"path": path, "size": len(raw)})
+
+
+def action_copy(sources: list[str], destination: str) -> None:
+    dest_dir = os.path.abspath(destination)
+    if not os.path.exists(dest_dir):
+        err_exit(f"Direktori tujuan tidak ditemukan: {dest_dir}")
+    if not os.path.isdir(dest_dir):
+        err_exit(f"Target tujuan bukan direktori: {dest_dir}")
+
+    if not isinstance(sources, list) or not sources:
+        err_exit("Daftar file/folder yang disalin tidak boleh kosong")
+
+    copied = []
+    for src in sources:
+        src_path = os.path.abspath(src)
+        if not os.path.exists(src_path) and not os.path.islink(src_path):
+            err_exit(f"File atau folder asal tidak ditemukan: {src_path}")
+
+        src_name = os.path.basename(src_path.rstrip("/"))
+        target_path = os.path.join(dest_dir, src_name)
+        check_path_protection(target_path, for_write=True)
+
+        if os.path.dirname(src_path) == dest_dir:
+            base, ext = os.path.splitext(src_name)
+            counter = 1
+            while os.path.exists(target_path) or os.path.islink(target_path):
+                if os.path.isdir(src_path) and not os.path.islink(src_path):
+                    target_path = os.path.join(dest_dir, f"{src_name}_copy{counter}")
+                else:
+                    target_path = os.path.join(dest_dir, f"{base}_copy{counter}{ext}")
+                counter += 1
+
+        if os.path.isdir(src_path):
+            real_src = os.path.realpath(src_path)
+            real_dest = os.path.realpath(target_path)
+            if real_dest == real_src or real_dest.startswith(real_src + os.sep):
+                err_exit(f"Tidak dapat menyalin direktori ke dalam dirinya sendiri: {src_name}")
+
+        try:
+            if os.path.islink(src_path):
+                link_to = os.readlink(src_path)
+                if os.path.exists(target_path) or os.path.islink(target_path):
+                    os.unlink(target_path)
+                os.symlink(link_to, target_path)
+            elif os.path.isdir(src_path):
+                if os.path.exists(target_path):
+                    shutil.copytree(src_path, target_path, symlinks=True, dirs_exist_ok=True)
+                else:
+                    shutil.copytree(src_path, target_path, symlinks=True)
+            else:
+                shutil.copy2(src_path, target_path)
+            p_uid, p_gid = get_parent_ownership(target_path)
+            try:
+                os.chown(target_path, p_uid, p_gid)
+            except OSError:
+                pass
+            copied.append(target_path)
+        except PermissionError:
+            err_exit(f"Akses ditolak menyalin: {src_name}")
+        except OSError as e:
+            err_exit(f"Gagal menyalin {src_name}: {e}")
+
+    ok_exit({"copied": copied, "count": len(copied)})
+
+
+def action_move(sources: list[str], destination: str) -> None:
+    dest_dir = os.path.abspath(destination)
+    if not os.path.exists(dest_dir):
+        err_exit(f"Direktori tujuan tidak ditemukan: {dest_dir}")
+    if not os.path.isdir(dest_dir):
+        err_exit(f"Target tujuan bukan direktori: {dest_dir}")
+
+    if not isinstance(sources, list) or not sources:
+        err_exit("Daftar file/folder yang dipindahkan tidak boleh kosong")
+
+    moved = []
+    for src in sources:
+        src_path = os.path.abspath(src)
+        real_src = os.path.realpath(src_path)
+        if real_src in PROTECTED_PATHS or src_path in PROTECTED_PATHS:
+            err_exit(f"Aksi ditolak: '{src_path}' adalah direktori sistem kritis.")
+
+        if not os.path.exists(src_path) and not os.path.islink(src_path):
+            err_exit(f"File atau folder asal tidak ditemukan: {src_path}")
+
+        src_name = os.path.basename(src_path.rstrip("/"))
+        target_path = os.path.join(dest_dir, src_name)
+        check_path_protection(target_path, for_write=True)
+
+        if src_path == target_path:
+            continue
+
+        if os.path.isdir(src_path):
+            real_dest = os.path.realpath(target_path)
+            if real_dest == real_src or real_dest.startswith(real_src + os.sep):
+                err_exit(f"Tidak dapat memindahkan direktori ke dalam dirinya sendiri: {src_name}")
+
+        try:
+            shutil.move(src_path, target_path)
+            moved.append(target_path)
+        except PermissionError:
+            err_exit(f"Akses ditolak memindahkan: {src_name}")
+        except OSError as e:
+            err_exit(f"Gagal memindahkan {src_name}: {e}")
+
+    ok_exit({"moved": moved, "count": len(moved)})
+
+
+def action_batch_rm(paths: list[str]) -> None:
+    if not isinstance(paths, list) or not paths:
+        err_exit("Daftar path tidak boleh kosong")
+
+    deleted = []
+    for path in paths:
+        p = os.path.abspath(path)
+        check_path_protection(p, for_write=False)
+        real_p = os.path.realpath(p)
+        if real_p in PROTECTED_PATHS or p in PROTECTED_PATHS:
+            err_exit(f"Aksi ditolak: '{p}' adalah direktori sistem kritis yang dilindungi.")
+        parts = [x for x in real_p.split("/") if x]
+        if len(parts) < 2:
+            err_exit(f"Aksi ditolak: dilarang menghapus path top-level '{p}'.")
+        if not os.path.exists(p) and not os.path.islink(p):
+            continue
+        try:
+            if os.path.islink(p) or not os.path.isdir(p):
+                os.unlink(p)
+            else:
+                shutil.rmtree(p)
+            deleted.append(p)
+        except PermissionError:
+            err_exit(f"Akses ditolak menghapus: {p}")
+        except OSError as e:
+            err_exit(f"Gagal menghapus {p}: {e}")
+
+    ok_exit({"deleted": deleted, "count": len(deleted)})
+
+
+def action_batch_chmod(paths: list[str], mode: str) -> None:
+    try:
+        oct_mode = int(mode, 8)
+    except ValueError:
+        err_exit(f"Format mode tidak valid (harus oktal, misal 0644 / 0755): {mode}")
+
+    if not isinstance(paths, list) or not paths:
+        err_exit("Daftar path tidak boleh kosong")
+
+    updated = []
+    for path in paths:
+        p = os.path.abspath(path)
+        check_path_protection(p, for_write=False)
+        if not os.path.exists(p):
+            continue
+        try:
+            os.chmod(p, oct_mode)
+            updated.append(p)
+        except Exception as e:
+            err_exit(f"Gagal mengubah izin {p}: {e}")
+
+    ok_exit({"updated": updated, "mode": mode, "count": len(updated)})
+
+
+def main():
+    payload = None
+    if not sys.stdin.isatty():
+        try:
+            raw = sys.stdin.read().strip()
+            if raw:
+                payload = json.loads(raw)
+        except Exception:
+            payload = None
+
+    if payload and isinstance(payload, dict):
+        action = payload.get("action", "")
+        params = payload.get("params", {})
+    else:
+        if len(sys.argv) < 2:
+            err_exit("Gunakan: pantau-file <action> [args...] atau kirim JSON ke stdin")
+        action = sys.argv[1]
+        params = {}
+        if action == "ls" and len(sys.argv) > 2:
+            params["path"] = sys.argv[2]
+        elif action == "cat" and len(sys.argv) > 2:
+            params["path"] = sys.argv[2]
+        elif action == "hash" and len(sys.argv) > 2:
+            params["path"] = sys.argv[2]
+        elif action == "mkdir" and len(sys.argv) > 2:
+            params["path"] = sys.argv[2]
+            if len(sys.argv) > 3:
+                params["mode"] = sys.argv[3]
+        elif action == "rm" and len(sys.argv) > 2:
+            params["path"] = sys.argv[2]
+        elif action == "rename" and len(sys.argv) > 3:
+            params["old_path"] = sys.argv[2]
+            params["new_path"] = sys.argv[3]
+        elif action == "chmod" and len(sys.argv) > 3:
+            params["path"] = sys.argv[2]
+            params["mode"] = sys.argv[3]
+        elif action == "chown" and len(sys.argv) > 3:
+            params["path"] = sys.argv[2]
+            params["owner"] = sys.argv[3]
+            if len(sys.argv) > 4:
+                params["group"] = sys.argv[4]
+
+    if action == "ls":
+        action_ls(params.get("path", "/"))
+    elif action == "cat":
+        action_cat(params.get("path", ""), params.get("max_bytes", MAX_TEXT_SIZE))
+    elif action == "hash":
+        action_hash(params.get("path", ""))
+    elif action == "write":
+        action_write(params.get("path", ""), params.get("content", ""), params.get("make_backup", True))
+    elif action == "mkdir":
+        action_mkdir(params.get("path", ""), params.get("mode", "0755"))
+    elif action == "touch":
+        action_touch(params.get("path", ""))
+    elif action == "rm":
+        action_rm(params.get("path", ""))
+    elif action == "rename":
+        action_rename(params.get("old_path", ""), params.get("new_path", ""))
+    elif action == "chmod":
+        action_chmod(params.get("path", ""), params.get("mode", "0644"))
+    elif action == "chown":
+        action_chown(params.get("path", ""), params.get("owner", "root"), params.get("group"))
+    elif action == "read_binary":
+        action_read_binary(params.get("path", ""), params.get("max_bytes", MAX_DOWNLOAD_SIZE))
+    elif action == "write_binary":
+        action_write_binary(params.get("path", ""), params.get("data_b64", ""))
+    elif action == "copy":
+        action_copy(params.get("sources", []), params.get("destination", ""))
+    elif action == "move":
+        action_move(params.get("sources", []), params.get("destination", ""))
+    elif action == "batch_rm":
+        action_batch_rm(params.get("paths", []))
+    elif action == "batch_chmod":
+        action_batch_chmod(params.get("paths", []), params.get("mode", "0644"))
+    else:
+        err_exit(f"Aksi tidak dikenal: '{action}'")
+
+
+if __name__ == "__main__":
+    main()'''
+
+
+def ensure_pantau_file_updated(force: bool = False) -> bool:
+    """Memastikan wrapper /usr/local/sbin/pantau-file mendukung pewarisan kepemilikan parent dir, single clean backup, dan proteksi otentikasi SSH.
+    Jika berkas belum ada, versi usang, atau force=True, otomatis perbarui via root langsung atau sudo pantau-file.
+    """
+    try:
+        cur_content = ""
+        if not force and os.path.isfile(PANTAU_FILE_CMD):
+            try:
+                with open(PANTAU_FILE_CMD, "r", encoding="utf-8", errors="replace") as f:
+                    cur_content = f.read()
+            except Exception:
+                pass
+            if "def get_parent_ownership" in cur_content and "otentikasi SSH" in cur_content and "ts_backup =" not in cur_content:
+                return True
+
+        content_to_write = PANTAU_FILE_SCRIPT_BODY.strip() + "\n"
+        if IS_ROOT:
+            with open(PANTAU_FILE_CMD, "w", encoding="utf-8") as f:
+                f.write(content_to_write)
+            os.chmod(PANTAU_FILE_CMD, 0o750)
+            print("[FILE] Wrapper /usr/local/sbin/pantau-file berhasil diperbarui (root)")
+            return True
+
+        # Jika user 'pantau', gunakan sudo pantau-file jika tersedia
+        if os.path.isfile(PANTAU_FILE_CMD):
+            payload_write = json.dumps({
+                "action": "write",
+                "params": {"path": PANTAU_FILE_CMD, "content": content_to_write, "make_backup": False}
+            })
+            pw = subprocess.run(["/usr/bin/sudo", "-n", PANTAU_FILE_CMD], input=payload_write, text=True, capture_output=True, timeout=10)
+            if pw.returncode == 0:
+                payload_chmod = json.dumps({
+                    "action": "chmod",
+                    "params": {"path": PANTAU_FILE_CMD, "mode": "0750"}
+                })
+                subprocess.run(["/usr/bin/sudo", "-n", PANTAU_FILE_CMD], input=payload_chmod, text=True, capture_output=True, timeout=10)
+                print("[FILE] Wrapper /usr/local/sbin/pantau-file berhasil diperbarui via pantau-file")
+                return True
+    except Exception as e:
+        print(f"[FILE WARN] Gagal memperbarui {PANTAU_FILE_CMD}: {e}")
+    return False
 
 _HIST_EPOCH = re.compile(r"^#(\d{9,12})$")                      # bash: baris before command (#epoch)
 _HIST_MTIME = re.compile(r"^#PANTAU_MTIME:(\d{9,12})$")          # metadata mtime wrapper
@@ -7874,6 +8832,7 @@ def _log_worker_loop(cfg: dict) -> None:
 # ---------------------------------------------------------------------------
 def run_file_op(action: str, params: dict) -> dict:
     """Jalankan operasi file melalui wrapper /usr/local/sbin/pantau-file (sudo root)."""
+    ensure_pantau_file_updated()
     payload = json.dumps({"action": action, "params": params}).encode("utf-8")
     if os.path.exists(PANTAU_FILE_CMD):
         try:
@@ -8290,6 +9249,7 @@ def main():
     print(f"[INFO] Mode        : {'root' if IS_ROOT else 'user pantau (sudo ss/wrapper)'}")
     ensure_pantau_apt_updated()
     ensure_pantau_user_updated()
+    ensure_pantau_file_updated()
     ensure_pantau_history_updated()
     ensure_pantau_firewall_updated()
     ensure_pantau_operator_account()

@@ -354,6 +354,25 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.7
+
+### Pembaruan & Fitur Baru
+1. **Alur Editor File Manager In-Memory:**
+   - Menghapus eksekusi prematur endpoint `/touch` saat memasukkan nama file baru.
+   - Berkas baru dibuka secara *in-memory buffer* dan hanya ditulis fisik ke disk jika operator menekan tombol Simpan (Ctrl+S).
+2. **Perampingan Cadangan Tunggal (.bak):**
+   - Menghilangkan polusi berkas duplikat `.bak.<timestamp>` pada `pantau-file`.
+   - Cadangan tunggal `.bak` hanya dibuat jika berkas lama memang sudah ada dan berukuran lebih dari 0 byte.
+3. **Pewarisan Hak Kepemilikan Direktori Induk (*Parent Directory Ownership Inheritance*):**
+   - Fungsi `action_mkdir`, `action_touch`, `action_write`, `action_write_binary`, dan `action_copy` pada `pantau-file` kini secara otomatis memeriksa stat direktori induk dan menerapkan `os.chown` sesuai UID/GID pemilik direktori tersebut.
+4. **Proteksi Berkas Kritis Otentikasi SSH:**
+   - `check_path_protection` pada `pantau-file` kini memblokir penulisan berkas otentikasi SSH (`.ssh`) melalui Web File Manager.
+5. **Keamanan & Isolasi Web Terminal:**
+   - Penegakan `umask 027` pada sesi terminal agar berkas baru tidak dapat diakses pengguna lain secara bebas.
+6. **Pembakuan Tata Kelola & Aturan Proyek (GEMINI.md & sop-pantau):**
+   - Menambahkan Pasal 12 (*Full Engineering & Design Ownership*) dan Pasal 13 (*First Principles & Anti-Overcomplication*).
+
+
 ## Versi 4.11.6
 
 ### v4.11.6 (2026-11-16)

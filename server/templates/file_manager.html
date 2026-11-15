@@ -828,6 +828,7 @@ let fmClipboard = null; // { mode: 'copy'|'cut', items: string[], sourceDir: str
 let fmSortColumn = 'name';
 let fmSortAsc = true;
 let fmEditingPath = null;
+let fmIsNewFile = false;
 let fmPromptCallback = null;
 let fmChmodTarget = null;
 let fmDeleteTarget = null;
@@ -1409,8 +1410,33 @@ function fmRenderItems(items) {
 // ===========================================================================
 // EDITOR FILE
 // ===========================================================================
+function fmOpenEditorNewFile(filePath) {
+  fmEditingPath = filePath;
+  fmIsNewFile = true;
+  const modal = document.getElementById('fm-editor-modal');
+  const pathEl = document.getElementById('fm-editor-path');
+  const textarea = document.getElementById('fm-editor-text');
+  const sizeEl = document.getElementById('fm-editor-size');
+  const statusEl = document.getElementById('fm-editor-status');
+  const restoreBtn = document.getElementById('fm-editor-restore-btn');
+  const saveBtn = document.getElementById('fm-editor-save-btn');
+
+  const isEn = (typeof currentLang !== 'undefined' && currentLang === 'en') || ((localStorage.getItem('app_lang') || 'id') === 'en');
+  pathEl.textContent = filePath + (isEn ? ' (New - Unsaved)' : ' (Baru - Belum Disimpan)');
+  textarea.value = '';
+  textarea.disabled = false;
+  saveBtn.disabled = false;
+  sizeEl.textContent = '0 B';
+  statusEl.textContent = '';
+  restoreBtn.style.display = 'none';
+
+  modal.style.display = 'flex';
+  setTimeout(() => textarea.focus(), 50);
+}
+
 async function fmOpenFile(filePath) {
   fmEditingPath = filePath;
+  fmIsNewFile = false;
   const modal = document.getElementById('fm-editor-modal');
   const pathEl = document.getElementById('fm-editor-path');
   const textarea = document.getElementById('fm-editor-text');
@@ -1485,6 +1511,7 @@ function fmCloseEditor() {
     btn.title = isEn ? 'Fullscreen' : 'Layar Penuh';
   }
   fmEditingPath = null;
+  fmIsNewFile = false;
 }
 
 function fmToggleEditorFullscreen() {
@@ -1503,7 +1530,15 @@ function fmToggleEditorFullscreen() {
 }
 
 function fmReloadEditor() {
-  if (fmEditingPath) fmOpenFile(fmEditingPath);
+  if (fmEditingPath) {
+    if (fmIsNewFile) {
+      const textarea = document.getElementById('fm-editor-text');
+      textarea.value = '';
+      textarea.focus();
+    } else {
+      fmOpenFile(fmEditingPath);
+    }
+  }
 }
 
 async function fmSaveFile() {
@@ -1536,8 +1571,18 @@ async function fmSaveFile() {
       throw new Error(data.detail || data.error || (isEn ? 'Failed to save file' : 'Gagal menyimpan file'));
     }
 
+    if (fmIsNewFile) {
+      fmIsNewFile = false;
+      document.getElementById('fm-editor-path').textContent = fmEditingPath;
+    }
     statusEl.innerHTML = '<span style="color:var(--green)">' + (isEn ? '✓ Saved' : '✓ Tersimpan') + '</span>';
-    restoreBtn.style.display = 'inline-block';
+    const sizeEl = document.getElementById('fm-editor-size');
+    if (sizeEl) sizeEl.textContent = formatBytes(new Blob([textarea.value]).size);
+    if (data.backup_created) {
+      restoreBtn.style.display = 'inline-block';
+    } else {
+      restoreBtn.style.display = 'none';
+    }
     setTimeout(() => { statusEl.textContent = ''; }, 3000);
     fmLoadDir(fmCurrentPath, false);
 
@@ -1904,21 +1949,17 @@ function fmOpenNewFile() {
   document.getElementById('fm-prompt-error').style.display = 'none';
   const subBtn = document.getElementById('fm-prompt-submit-btn');
   subBtn.disabled = false;
-  subBtn.textContent = isEn ? 'Create File' : 'Buat File';
+  subBtn.textContent = isEn ? 'Open Editor' : 'Buka Editor';
 
   fmPromptCallback = async (name) => {
-    const fullPath = fmCurrentPath.replace(/\/+$/, '') + '/' + name.trim();
-    const res = await fmFetch(`/api/servers/${SID}/files/touch`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrf() },
-      body: JSON.stringify({ path: fullPath })
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.detail || data.error || (isEn ? 'Failed to create file' : 'Gagal membuat file'));
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    if (cleanName.includes('/') || cleanName.includes('\\')) {
+      throw new Error(isEn ? 'File name cannot contain slashes (/ or \\)' : 'Nama file tidak boleh mengandung karakter slash (/ atau \\)');
+    }
+    const fullPath = fmCurrentPath.replace(/\/+$/, '') + '/' + cleanName;
     fmClosePrompt();
-    await fmLoadDir(fmCurrentPath, false);
-    fmOpenFile(fullPath);
+    fmOpenEditorNewFile(fullPath);
   };
 
   document.getElementById('fm-prompt-modal').style.display = 'flex';

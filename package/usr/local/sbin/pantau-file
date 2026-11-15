@@ -79,6 +79,9 @@ def check_path_protection(path: str, for_write: bool = False) -> None:
         for pref in SYSTEM_PROTECTED_PREFIXES:
             if p == pref or p.startswith(pref + "/"):
                 err_exit(f"Aksi ditolak: '{path}' berada di direktori sistem terlindungi ({pref}).")
+        if for_write:
+            if p.endswith("/.ssh") or "/.ssh/" in p:
+                err_exit(f"Aksi ditolak: '{path}' adalah direktori/berkas otentikasi SSH yang dilindungi.")
 
 
 def ok_exit(data: dict) -> None:
@@ -97,6 +100,16 @@ def get_owner_group(st: os.stat_result) -> tuple[str, str]:
     except (KeyError, OverflowError):
         group = str(st.st_gid)
     return owner, group
+
+
+def get_parent_ownership(path: str) -> tuple[int, int]:
+    """Mengambil UID dan GID dari direktori induk agar berkas/folder baru mewarisi kepemilikan yang sah."""
+    parent_dir = os.path.dirname(os.path.abspath(path))
+    try:
+        pst = os.stat(parent_dir)
+        return pst.st_uid, pst.st_gid
+    except OSError:
+        return 0, 0
 
 
 def action_hash(path: str) -> None:
@@ -383,19 +396,14 @@ def action_write(path: str, content: str, make_backup: bool = True) -> None:
         except OSError:
             pass
 
-    # Buat backup jika file lama sudah ada
+    # Buat backup tunggal jika file lama sudah ada dan memiliki isi (> 0 bytes)
     backup_file = None
-    if make_backup and st_orig:
+    if make_backup and st_orig and st_orig.st_size > 0:
         try:
             backup_file = path + ".bak"
             if os.path.islink(backup_file):
                 os.unlink(backup_file)
             shutil.copy2(path, backup_file, follow_symlinks=False)
-            # Simpan juga timestamp backup
-            ts_backup = f"{path}.bak.{int(time.time())}"
-            if os.path.islink(ts_backup):
-                os.unlink(ts_backup)
-            shutil.copy2(path, ts_backup, follow_symlinks=False)
         except OSError:
             # Tetap lanjut tulis tapi beri peringatan di log jika backup gagal
             pass
@@ -417,9 +425,11 @@ def action_write(path: str, content: str, make_backup: bool = True) -> None:
             except OSError:
                 pass
         else:
-            # File baru: default 0644
+            # File baru: warisi kepemilikan direktori induk, default mode 0644
+            p_uid, p_gid = get_parent_ownership(path)
             try:
                 os.chmod(tmp_path, 0o644)
+                os.chown(tmp_path, p_uid, p_gid)
             except OSError:
                 pass
 
@@ -449,6 +459,11 @@ def action_mkdir(path: str, mode: str = "0755") -> None:
 
     try:
         os.makedirs(path, mode=oct_mode, exist_ok=False)
+        p_uid, p_gid = get_parent_ownership(path)
+        try:
+            os.chown(path, p_uid, p_gid)
+        except OSError:
+            pass
     except PermissionError:
         err_exit(f"Akses ditolak membuat direktori: {path}")
     except OSError as e:
@@ -467,6 +482,11 @@ def action_touch(path: str) -> None:
         with open(path, "w") as f:
             pass
         os.chmod(path, 0o644)
+        p_uid, p_gid = get_parent_ownership(path)
+        try:
+            os.chown(path, p_uid, p_gid)
+        except OSError:
+            pass
     except PermissionError:
         err_exit(f"Akses ditolak membuat file: {path}")
     except OSError as e:
@@ -634,8 +654,10 @@ def action_write_binary(path: str, data_b64: str) -> None:
             except OSError:
                 pass
         else:
+            p_uid, p_gid = get_parent_ownership(path)
             try:
                 os.chmod(tmp_path, 0o644)
+                os.chown(tmp_path, p_uid, p_gid)
             except OSError:
                 pass
 
@@ -695,6 +717,11 @@ def action_copy(sources: list[str], destination: str) -> None:
                     shutil.copytree(src_path, target_path, symlinks=True)
             else:
                 shutil.copy2(src_path, target_path)
+            p_uid, p_gid = get_parent_ownership(target_path)
+            try:
+                os.chown(target_path, p_uid, p_gid)
+            except OSError:
+                pass
             copied.append(target_path)
         except PermissionError:
             err_exit(f"Akses ditolak menyalin: {src_name}")
