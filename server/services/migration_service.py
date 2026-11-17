@@ -1,6 +1,7 @@
 """Startup schema migrations for Pantau Server."""
 
 import logging
+import re
 from sqlalchemy import inspect, text
 
 try:
@@ -339,6 +340,33 @@ def migrate_fim_system() -> None:
             if added_total:
                 db.commit()
                 logger.info("[startup] Inisialisasi %d jalur default FIM untuk %d server", added_total, len(servers))
+
+            # Standarisasi & eliminasi atribusi semu pada riwayat kejadian FIM lama
+            legacy_events = (
+                db.query(FIMEvent)
+                .filter(
+                    (FIMEvent.details.like("%diubah oleh%"))
+                    | (FIMEvent.details.like("%ditambahkan oleh%"))
+                    | (FIMEvent.details.like("%dihapus dari direktori oleh%"))
+                )
+                .all()
+            )
+            cleaned_total = 0
+            for ev in legacy_events:
+                d = ev.details or ""
+                orig = d
+                d = re.sub(r'File\s+(.+?)\s+telah dihapus dari direktori oleh\s+\S+', r'File \1 dihapus dari direktori', d)
+                d = re.sub(r'File\s+(.+?)\s+baru ditambahkan oleh\s+\S+', r'File \1 baru ditambahkan ke direktori', d)
+                d = re.sub(r'Hak akses file\s+(.+?)\s+diubah oleh\s+\S+\s+(\([^)]+\))', r'Hak akses file \1 berubah \2', d)
+                d = re.sub(r'Hak akses file diubah oleh\s+\S+\s+(\([^)]+\))', r'Hak akses berkas berubah \1', d)
+                d = re.sub(r'File\s+(.+?)\s+telah diubah oleh\s+\S+', r'Modifikasi isi/ukuran file \1 terdeteksi', d)
+                d = re.sub(r'File telah diubah oleh\s+\S+', r'Modifikasi isi/ukuran berkas terdeteksi', d)
+                if d != orig:
+                    ev.details = d
+                    cleaned_total += 1
+            if cleaned_total:
+                db.commit()
+                logger.info("[startup] Membersihkan atribusi semu pada %d riwayat kejadian FIM", cleaned_total)
         except Exception as e:
             db.rollback()
             logger.warning("[startup] Gagal inisialisasi default FIM paths: %s", e)

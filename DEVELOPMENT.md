@@ -354,6 +354,15 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.10
+
+### Standarisasi Integritas Berkas (FIM) & Eliminasi Atribusi Semu (v4.11.10)
+- **Eliminasi Atribusi Semu:** Menghapus klaim palsu 'diubah oleh user' yang hanya didasarkan pada kepemilikan berkas Unix (st_uid), menggantinya dengan deskripsi kondisi fisik berkas yang objektif dan terukur.
+- **Pemisahan Domain Users & FIM:** Menegakkan Tab Users/Akun (/servers/{sid}?tab=akun dan /servers/{sid}/user/{username}) sebagai satu-satunya Single Source of Truth audit tindakan pengguna (sesi, TTY, IP, sudo). Tab FIM murni fokus pada integritas fisik objek sistem berkas.
+- **Dual-Render & Event Types Sinkron:** Menyelaraskan rendering Jinja server-side dan JavaScript client-side untuk event type MODIFIED, DELETED, CREATED, PERMISSION_CHANGED, dan OWNERSHIP_CHANGED.
+- **Pembersihan Riwayat Basis Data:** Menambahkan migrasi otomatis untuk membersihkan riwayat kejadian FIM lama dari klaim fiktif di tabel fim_events database.
+
+
 ## Versi 4.11.9
 
 ### Perbaikan Integritas Berkas (FIM) /etc/sudoers (v4.11.9)

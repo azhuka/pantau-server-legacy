@@ -2795,7 +2795,7 @@ div[style*="position: fixed"] .card {
             </td>
             <td class="col-fixed-cell"><code class="mono" style="font-size:11px;color:var(--text-bright);font-weight:600">{{ fe.path }}</code></td>
             <td class="col-fixed-cell">
-              <span class="badge {% if fe.event_type == 'MODIFIED' %}badge-danger{% elif fe.event_type == 'DELETED' %}badge-warn{% elif fe.event_type == 'CREATED' %}badge-info{% else %}badge-muted{% endif %}" style="font-size:9.5px;padding:1px 6px">
+              <span class="badge {% if fe.event_type == 'MODIFIED' %}badge-danger{% elif fe.event_type in ('DELETED', 'PERMISSION_CHANGED', 'OWNERSHIP_CHANGED') %}badge-warn{% elif fe.event_type == 'CREATED' %}badge-info{% else %}badge-muted{% endif %}" style="font-size:9.5px;padding:1px 6px">
                 {{ fe.event_type }}
               </span>
             </td>
@@ -11258,6 +11258,10 @@ function renderFim(paths, events) {
             typeBadge = `<span class="badge badge-warn" style="font-size:9.5px;padding:1px 6px">DELETED</span>`;
           } else if (e.event_type === 'CREATED') {
             typeBadge = `<span class="badge badge-info" style="font-size:9.5px;padding:1px 6px">CREATED</span>`;
+          } else if (e.event_type === 'PERMISSION_CHANGED') {
+            typeBadge = `<span class="badge badge-warn" style="font-size:9.5px;padding:1px 6px">PERMISSION_CHANGED</span>`;
+          } else if (e.event_type === 'OWNERSHIP_CHANGED') {
+            typeBadge = `<span class="badge badge-warn" style="font-size:9.5px;padding:1px 6px">OWNERSHIP_CHANGED</span>`;
           }
 
           let sevBadge = `<span class="badge badge-info" style="font-size:9.5px;padding:1px 6px">INFO</span>`;

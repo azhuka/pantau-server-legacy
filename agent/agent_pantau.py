@@ -480,7 +480,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.9"
+AGENT_VERSION = "4.11.10"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -6747,7 +6747,7 @@ def collect_fim(force: bool = False) -> dict:
                     "path": p,
                     "event_type": "DELETED",
                     "severity": ev_sev,
-                    "details": f"File atau direktori telah dihapus dari sistem ({last_info.get('owner_group', 'root')})",
+                    "details": "Objek berkas atau direktori telah dihapus dari sistem",
                     "detected_at": now_iso,
                 })
                 last_state[p] = {"exists": False, "sha256": "", "files": {}}
@@ -6777,26 +6777,24 @@ def collect_fim(force: bool = False) -> dict:
                 # 1a. Deteksi file yang dihapus sejak pemindaian terakhir
                 for rel_f, l_f in last_files.items():
                     if rel_f not in cur_files:
-                        owner = l_f.get("owner", "user")
                         disp_name = f"/{rel_f}" if ("/" in rel_f or os.sep in rel_f) else rel_f
                         events_result.append({
                             "path": p,
                             "event_type": "DELETED",
                             "severity": ev_sev,
-                            "details": f"File {disp_name} telah dihapus dari direktori oleh {owner}",
+                            "details": f"File {disp_name} dihapus dari direktori",
                             "detected_at": now_iso,
                         })
 
                 # 1b. Deteksi file baru yang ditambahkan sejak pemindaian terakhir
                 for rel_f, c_f in cur_files.items():
                     if rel_f not in last_files:
-                        owner = c_f.get("owner", "user")
                         disp_name = f"/{rel_f}" if ("/" in rel_f or os.sep in rel_f) else rel_f
                         events_result.append({
                             "path": p,
                             "event_type": "CREATED",
                             "severity": ev_sev,
-                            "details": f"File {disp_name} baru ditambahkan oleh {owner}",
+                            "details": f"File {disp_name} baru ditambahkan ke direktori",
                             "detected_at": now_iso,
                         })
 
@@ -6804,7 +6802,6 @@ def collect_fim(force: bool = False) -> dict:
                 for rel_f, c_f in cur_files.items():
                     if rel_f in last_files:
                         l_f = last_files[rel_f]
-                        cur_owner = c_f.get("owner", "user")
                         cur_h_f = c_f.get("sha256", "")
                         last_h_f = l_f.get("sha256", "")
                         cur_sz_f = c_f.get("size", 0)
@@ -6818,7 +6815,7 @@ def collect_fim(force: bool = False) -> dict:
                                 "path": p,
                                 "event_type": "MODIFIED",
                                 "severity": ev_sev,
-                                "details": f"File {disp_name} telah diubah oleh {cur_owner}",
+                                "details": f"Modifikasi isi/ukuran file {disp_name} terdeteksi",
                                 "detected_at": now_iso,
                             })
                         elif cur_perm_f and last_perm_f and cur_perm_f != last_perm_f:
@@ -6826,7 +6823,7 @@ def collect_fim(force: bool = False) -> dict:
                                 "path": p,
                                 "event_type": "PERMISSION_CHANGED",
                                 "severity": "warning",
-                                "details": f"Hak akses file {disp_name} diubah oleh {cur_owner} ({last_perm_f} -> {cur_perm_f})",
+                                "details": f"Hak akses file {disp_name} berubah ({last_perm_f} -> {cur_perm_f})",
                                 "detected_at": now_iso,
                             })
 
@@ -6851,21 +6848,24 @@ def collect_fim(force: bool = False) -> dict:
                 last_m = last_info.get("mtime", 0)
                 last_p = last_info.get("permissions", "")
                 last_og = last_info.get("owner_group", "")
-                cur_owner = cur_og.split(":")[0] if ":" in cur_og else "user"
 
                 diffs_single = []
+                ev_type_single = "MODIFIED"
                 if (cur_hash and last_h and cur_hash != last_h) or (size_b != last_sz) or (cur_mtime != last_m):
-                    diffs_single.append(f"File telah diubah oleh {cur_owner}")
+                    diffs_single.append("Modifikasi isi/ukuran berkas terdeteksi")
+                    ev_type_single = "MODIFIED"
                 elif cur_perm and last_p and cur_perm != last_p:
-                    diffs_single.append(f"Hak akses file diubah oleh {cur_owner} ({last_p} -> {cur_perm})")
+                    diffs_single.append(f"Hak akses berkas berubah ({last_p} -> {cur_perm})")
+                    ev_type_single = "PERMISSION_CHANGED"
                 elif cur_og and last_og and cur_og != last_og:
-                    diffs_single.append(f"Kepemilikan file diubah ({last_og} -> {cur_og})")
+                    diffs_single.append(f"Kepemilikan berkas berubah ({last_og} -> {cur_og})")
+                    ev_type_single = "OWNERSHIP_CHANGED"
 
                 if diffs_single:
                     events_result.append({
                         "path": p,
-                        "event_type": "MODIFIED",
-                        "severity": ev_sev,
+                        "event_type": ev_type_single,
+                        "severity": ev_sev if ev_type_single == "MODIFIED" else "warning",
                         "details": "; ".join(diffs_single),
                         "detected_at": now_iso,
                     })
