@@ -354,6 +354,15 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.8
+
+### Perbaikan Bug
+1. **Resolusi Deadlock MySQL (Error 1213) pada Tabel `server_problems`:**
+   - Menghapus eksekusi kueri `DELETE` rentang tanggal yang sebelumnya dipanggil di setiap kali `sync_server_problems()` berjalan. Kueri tersebut memicu penguncian *next-key lock* / *gap lock* pada indeks `idx_problems_open`, yang menyebabkan tabrakan *deadlock* saat ada beberapa permintaan konkuren (misal: laporan heartbeat agen bersamaan dengan polling dasbor).
+   - Memindahkan seluruh logika retensi pembersihan riwayat masalah lampau (> 30 hari) ke worker latar belakang `_retention_loop()` yang berjalan tiap 1 jam.
+   - Memperkuat resiliensi `db.commit()` pada sinkronisasi masalah dengan blok penanganan *safe rollback* agar tidak memicu error HTTP 500 pada klien.
+
+
 ## Versi 4.11.7
 
 ### Pembaruan & Fitur Baru

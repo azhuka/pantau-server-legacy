@@ -2519,14 +2519,14 @@ def sync_server_problems(db, srv, instances, keep_history=40, now=None):
                             svc_obj.ignored_reason = None
                             svc_obj.ignore_mode = None
 
-    stale = now - timedelta(days=30)
-    db.query(ServerProblem).filter(
-        ServerProblem.server_id == srv.id,
-        ServerProblem.resolved_at.isnot(None),
-        ServerProblem.resolved_at < stale,
-        (ServerProblem.is_ignored == 0) | (ServerProblem.is_ignored.is_(None)) | (ServerProblem.ignore_mode != "permanent"),
-    ).delete(synchronize_session=False)
-    db.commit()  # Simpan pembaruan status problem ke database agar ID valid saat di-ack/resolve
+    try:
+        db.commit()  # Simpan pembaruan status problem ke database agar ID valid saat di-ack/resolve
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.warning("[problem_service] Commit status problem gagal (%s), rollback berhasil", exc)
 
     open_rows = (
         db.query(ServerProblem).filter(
@@ -2801,7 +2801,7 @@ _RETENTION_LIMITS = {
     "audit_logs_days": 365,
     "commands_days": 180,      # hanya status sukses/gagal (bukan yang berjalan)
     "log_requests_days": 30,   # hanya yang sudah selesai
-    "resolved_problems_days": 90, # masalah yang sudah terselesaikan lampau
+    "resolved_problems_days": 30, # masalah yang sudah terselesaikan lampau
 }
 
 
@@ -2825,6 +2825,7 @@ def _retention_prune(db: Session) -> None:
     db.query(ServerProblem).filter(
         ServerProblem.resolved_at.isnot(None),
         ServerProblem.resolved_at < now - timedelta(days=_RETENTION_LIMITS["resolved_problems_days"]),
+        (ServerProblem.is_ignored == 0) | (ServerProblem.is_ignored.is_(None)) | (ServerProblem.ignore_mode != "permanent"),
     ).delete(synchronize_session=False)
     db.commit()
 
