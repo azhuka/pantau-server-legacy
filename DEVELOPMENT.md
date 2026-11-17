@@ -354,6 +354,13 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.9
+
+### Perbaikan Integritas Berkas (FIM) /etc/sudoers (v4.11.9)
+- **Auto-Promote Baseline Metadata ke SHA-256:** Mengeliminasi peringatan palsu modifikasi berkas sistem (/etc/sudoers) ketika kapabilitas wrapper sudo aktif.
+- **Transisi Versi Agen yang Mulus:** Menyelaraskan baseline FIM saat migrasi versi agen tanpa intervensi manual operator.
+
+
 ## Versi 4.11.8
 
 ### Perbaikan Bug

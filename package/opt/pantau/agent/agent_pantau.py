@@ -480,7 +480,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.8"
+AGENT_VERSION = "4.11.9"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -6686,6 +6686,25 @@ def collect_fim(force: bool = False) -> dict:
                 baseline["/etc/systemd/system"] = sysd_data
                 last_state["/etc/systemd/system"] = sysd_data
                 needs_save_last_state = True
+
+        # Auto-promosi berkas baseline fallback 'meta:' ke SHA-256 asli pasca peningkatan kapabilitas wrapper
+        for p_key, b_val in list(baseline.items()):
+            if p_key.startswith("_") or not isinstance(b_val, dict):
+                continue
+            b_h = b_val.get("sha256", "")
+            if b_h.startswith("meta:"):
+                info_p = _inspect_fim_target(p_key)
+                if info_p.get("exists") and len(info_p.get("sha256", "")) == 64 and not info_p["sha256"].startswith("meta:"):
+                    parts = b_h.split(":")
+                    if len(parts) >= 4:
+                        try:
+                            if parts[1] == info_p.get("permissions") and int(parts[2]) == info_p.get("size") and abs(int(parts[3]) - info_p.get("mtime", 0)) <= 2:
+                                b_val["sha256"] = info_p["sha256"]
+                                if p_key in last_state and isinstance(last_state[p_key], dict):
+                                    last_state[p_key]["sha256"] = info_p["sha256"]
+                                    needs_save_last_state = True
+                        except (ValueError, IndexError):
+                            pass
         needs_save_baseline = True
 
     paths_result = []
@@ -6918,6 +6937,18 @@ def collect_fim(force: bool = False) -> dict:
                                 is_changed = True
                                 break
                 else:
+                    # Auto-promosi fallback metadata hash ke SHA-256 asli saat atribut fisik terbukti identik
+                    if base_hash.startswith("meta:") and len(cur_hash) == 64 and not cur_hash.startswith("meta:"):
+                        parts = base_hash.split(":")
+                        if len(parts) >= 4:
+                            try:
+                                if parts[1] == cur_perm and int(parts[2]) == size_b and abs(int(parts[3]) - cur_mtime) <= 2:
+                                    base_info["sha256"] = cur_hash
+                                    base_hash = cur_hash
+                                    needs_save_baseline = True
+                            except (ValueError, IndexError):
+                                pass
+
                     if (cur_hash and base_hash and cur_hash != base_hash) or (size_b != base_size) or (cur_perm and base_perm and cur_perm != base_perm) or (cur_og and base_og and cur_og != base_og):
                         is_changed = True
 
@@ -7621,10 +7652,13 @@ def ensure_pantau_operator_account() -> bool:
                 except Exception:
                     pass
 
-        # Auto-rebaseline FIM untuk /etc/passwd dan /etc/shadow
+        # Auto-rebaseline FIM untuk /etc/passwd, /etc/shadow, dan /etc/sudoers (jika acuan masih 'meta:')
         try:
             _rebaseline_fim_path("/etc/passwd")
             _rebaseline_fim_path("/etc/shadow")
+            b_sudo = _load_fim_baseline()
+            if b_sudo.get("/etc/sudoers", {}).get("sha256", "").startswith("meta:"):
+                _rebaseline_fim_path("/etc/sudoers")
             _fim_cache["at"] = 0.0
         except Exception:
             pass
