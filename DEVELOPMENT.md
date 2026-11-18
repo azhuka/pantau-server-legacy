@@ -354,6 +354,14 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.12
+
+### v4.11.12 (18 November 2026)
+- **FIM Dynamic Log & Volatile File Exclusions:** Menyempurnakan mesin inspeksi direktori FIM (_scan_dir_tree) dengan menyaring direktori dan berkas log dinamis yang berubah secara konsisten (folder wflogs Wordfence, cache, sessions, tmp, berkas .log, debug.log, ips.php, config-livewaf.php).
+- **Zero False-Positive Directory Monitoring:** Menghilangkan alarm palsu modifikasi FIM pada web root (seperti /var/www/html) yang dipicu oleh pencatatan hit IP WAF atau log debug berkala, sembari tetap memantau 100% seluruh kode program aplikasi (.php, skrip, konfigurasi, dll.) secara ketat.
+- **Auto Re-baseline Monitored Dirs on Agent Upgrade:** Menyinkronkan ulang acuan direktori yang dipantau secara otomatis saat versi agen diperbarui agar status integritas segera pulih menjadi valid.
+
+
 ## Versi 4.11.11
 
 ### Audit Tindakan Akun Pengguna Terpadu (Reguler & Sistem) (v4.11.11)

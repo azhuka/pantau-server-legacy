@@ -480,7 +480,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.11"
+AGENT_VERSION = "4.11.12"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -6535,11 +6535,20 @@ def _scan_dir_tree(dir_path: str, max_depth: int = 10, max_files: int = 5000) ->
     file_count = 0
     total_size = 0
 
-    ignored_dirs = {".git", ".svn", ".cache", "node_modules", "__pycache__", ".idea", ".vscode"}
+    ignored_dirs = {
+        ".git", ".svn", ".cache", "node_modules", "__pycache__", ".idea", ".vscode",
+        "wflogs", "cache", "wp-cache", "sessions", "tmp", "temp", "logs",
+    }
+    ignored_extensions = {
+        ".log", ".tmp", ".swp", ".swo", ".bak", ".pid", ".sock", ".sess",
+    }
+    ignored_filenames = {
+        "debug.log", "error.log", "access.log", "ips.php", "config-livewaf.php",
+    }
 
     try:
         for root, dirs, files in os.walk(dir_path_clean, topdown=True, followlinks=False):
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ignored_dirs]
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d.lower() not in ignored_dirs]
             rel_root = os.path.relpath(root, dir_path_clean)
             depth = 0 if rel_root == "." else len(rel_root.split(os.sep))
             if depth >= max_depth:
@@ -6551,10 +6560,18 @@ def _scan_dir_tree(dir_path: str, max_depth: int = 10, max_files: int = 5000) ->
             for f in files:
                 if f.startswith("."):
                     continue
+                f_lower = f.lower()
+                if any(f_lower.endswith(ext) for ext in ignored_extensions):
+                    continue
+                if f_lower in ignored_filenames:
+                    continue
                 if file_count >= max_files:
                     break
                 full_path = os.path.join(root, f)
                 rel_file = os.path.relpath(full_path, dir_path_clean)
+                rel_parts = [p.lower() for p in rel_file.split(os.sep)]
+                if any(p in ignored_dirs for p in rel_parts):
+                    continue
 
                 try:
                     st = os.stat(full_path)
@@ -6796,28 +6813,31 @@ def collect_fim(force: bool = False) -> dict:
     needs_save_last_state = False
 
     # Deteksi pembaruan versi agen: jika versi berubah (misal pasca update OTA/install.sh/git),
-    # otomatis sinkronkan acuan direktori /etc/systemd/system agar tidak memicu alarm FIM palsu.
+    # otomatis sinkronkan acuan direktori yang dipantau agar berkas log dinamis yang baru dikecualikan tidak memicu alarm FIM palsu.
     last_agent_ver = baseline.get("_meta_agent_version", "")
     if last_agent_ver != AGENT_VERSION:
         baseline["_meta_agent_version"] = AGENT_VERSION
         _cleanup_systemd_bak()
-        if "/etc/systemd/system" in baseline:
-            info_sysd = _inspect_fim_target("/etc/systemd/system")
-            if info_sysd.get("exists"):
-                sysd_data = {
-                    "sha256": info_sysd.get("sha256", ""),
-                    "size": info_sysd.get("size", 0),
-                    "mtime": info_sysd.get("mtime", 0),
-                    "permissions": info_sysd.get("permissions", ""),
-                    "owner_group": info_sysd.get("owner_group", ""),
-                    "count": info_sysd.get("count", 0),
-                    "dir_count": info_sysd.get("dir_count", 0),
-                    "file_count": info_sysd.get("file_count", 0),
-                    "files": info_sysd.get("files", {}),
-                }
-                baseline["/etc/systemd/system"] = sysd_data
-                last_state["/etc/systemd/system"] = sysd_data
-                needs_save_last_state = True
+        for p_key, b_val in list(baseline.items()):
+            if p_key.startswith("_") or not isinstance(b_val, dict):
+                continue
+            if b_val.get("is_dir") or "files" in b_val or p_key == "/etc/systemd/system":
+                info_dir = _inspect_fim_target(p_key)
+                if info_dir.get("exists"):
+                    dir_data = {
+                        "sha256": info_dir.get("sha256", ""),
+                        "size": info_dir.get("size", 0),
+                        "mtime": info_dir.get("mtime", 0),
+                        "permissions": info_dir.get("permissions", ""),
+                        "owner_group": info_dir.get("owner_group", ""),
+                        "count": info_dir.get("count", 0),
+                        "dir_count": info_dir.get("dir_count", 0),
+                        "file_count": info_dir.get("file_count", 0),
+                        "files": info_dir.get("files", {}),
+                    }
+                    baseline[p_key] = dir_data
+                    last_state[p_key] = dir_data
+                    needs_save_last_state = True
 
         # Auto-promosi berkas baseline fallback 'meta:' ke SHA-256 asli pasca peningkatan kapabilitas wrapper
         for p_key, b_val in list(baseline.items()):
