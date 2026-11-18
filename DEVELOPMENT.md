@@ -354,6 +354,14 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.13
+
+### v4.11.13 (18 November 2026)
+- **Zero-Blindspot FIM Architecture:** Menghapus seluruh jalan pintas pengecualian buta dan hardcoding nama direktori pihak ketiga pada mesin pemindai FIM (agent_pantau.py). Seluruh subdirektori (termasuk folder cache, log, dan writable) kembali dipindai dan diawasi secara penuh.
+- **Attribute-Specific Integrity Monitoring Policies:** Menerapkan pemisahan perlakuan evaluasi integritas berbasis karakteristik objek: berkas log dan data dinamis tetap dipantau secara ketat untuk hak akses (permissions), kepemilikan (owner:group), dan deteksi penghapusan berkas (DELETED / anti-forensik), namun ditoleransi fluktuasi hash dan pertambahan ukuran normal tanpa memicu alarm palsu.
+- **Script Injection & Threat Guard:** Menjaga pengawasan ketat terhadap pembuatan berkas baru (CREATED) di seluruh pohon direktori untuk mencegah penyusupan webshell backdoor.
+
+
 ## Versi 4.11.12
 
 ### v4.11.12 (18 November 2026)

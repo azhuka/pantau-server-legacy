@@ -480,7 +480,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.12"
+AGENT_VERSION = "4.11.13"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -6492,6 +6492,38 @@ def _cleanup_systemd_bak() -> None:
         pass
 
 
+# Pola karakteristik berkas volatil/log dinamis untuk Diferensiasi Kebijakan Atribut FIM
+FIM_VOLATILE_EXTENSIONS = {
+    ".log", ".tmp", ".swp", ".swo", ".pid", ".sock", ".sess", ".cache", ".dat",
+}
+FIM_VOLATILE_DIR_NAMES = {
+    "logs", "log", "cache", "sessions", "tmp", "temp", "wflogs",
+}
+FIM_VOLATILE_SPECIAL_FILENAMES = {
+    "ips.php", "config-livewaf.php", "debug.log", "error.log", "access.log",
+}
+
+
+def _is_volatile_fim_file(rel_path: str, filename: str) -> bool:
+    """Evaluasi apakah berkas merupakan data volatil / log dinamis.
+    Berkas volatil tetap diawasi atribut keamanan fisiknya (hak akses, kepemilikan,
+    keberadaan, dan deteksi penghapusan) tanpa memicu alarm palsu pada pertumbuhan
+    ukuran log atau fluktuasi hash isi.
+    """
+    f_lower = filename.lower()
+    if any(f_lower.endswith(ext) for ext in FIM_VOLATILE_EXTENSIONS):
+        return True
+    if f_lower in FIM_VOLATILE_SPECIAL_FILENAMES:
+        return True
+    if f_lower.startswith("sess_"):
+        return True
+    parts = [p.lower() for p in rel_path.replace("\\", "/").split("/")[:-1]]
+    if any(d in FIM_VOLATILE_DIR_NAMES for d in parts):
+        if any(f_lower.endswith(ext) for ext in {".txt", ".dat", ".json", ".cache", ".data", ".bin", ".out", ".log", ".tmp"}):
+            return True
+    return False
+
+
 def _scan_dir_tree(dir_path: str, max_depth: int = 10, max_files: int = 5000) -> dict:
     """
     Pemindaian pohon direktori secara rekursif hingga kedalaman tertentu (maksimal max_depth subfolder).
@@ -6535,20 +6567,11 @@ def _scan_dir_tree(dir_path: str, max_depth: int = 10, max_files: int = 5000) ->
     file_count = 0
     total_size = 0
 
-    ignored_dirs = {
-        ".git", ".svn", ".cache", "node_modules", "__pycache__", ".idea", ".vscode",
-        "wflogs", "cache", "wp-cache", "sessions", "tmp", "temp", "logs",
-    }
-    ignored_extensions = {
-        ".log", ".tmp", ".swp", ".swo", ".bak", ".pid", ".sock", ".sess",
-    }
-    ignored_filenames = {
-        "debug.log", "error.log", "access.log", "ips.php", "config-livewaf.php",
-    }
+    ignored_dirs = {".git", ".svn", ".cache", "node_modules", "__pycache__", ".idea", ".vscode"}
 
     try:
         for root, dirs, files in os.walk(dir_path_clean, topdown=True, followlinks=False):
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d.lower() not in ignored_dirs]
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ignored_dirs]
             rel_root = os.path.relpath(root, dir_path_clean)
             depth = 0 if rel_root == "." else len(rel_root.split(os.sep))
             if depth >= max_depth:
@@ -6560,18 +6583,11 @@ def _scan_dir_tree(dir_path: str, max_depth: int = 10, max_files: int = 5000) ->
             for f in files:
                 if f.startswith("."):
                     continue
-                f_lower = f.lower()
-                if any(f_lower.endswith(ext) for ext in ignored_extensions):
-                    continue
-                if f_lower in ignored_filenames:
-                    continue
                 if file_count >= max_files:
                     break
                 full_path = os.path.join(root, f)
                 rel_file = os.path.relpath(full_path, dir_path_clean)
-                rel_parts = [p.lower() for p in rel_file.split(os.sep)]
-                if any(p in ignored_dirs for p in rel_parts):
-                    continue
+                is_vol = _is_volatile_fim_file(rel_file, f)
 
                 try:
                     st = os.stat(full_path)
@@ -6612,6 +6628,7 @@ def _scan_dir_tree(dir_path: str, max_depth: int = 10, max_files: int = 5000) ->
                     "owner": f_owner,
                     "group": f_group,
                     "sha256": f_hash,
+                    "is_volatile": is_vol,
                 }
                 file_count += 1
 
@@ -6620,11 +6637,14 @@ def _scan_dir_tree(dir_path: str, max_depth: int = 10, max_files: int = 5000) ->
     except Exception:
         pass
 
-    # Hitung hash pohon direktori terpadu
+    # Hitung hash pohon direktori terpadu berdasarkan kebijakan atribut
     manifest_items = []
-    for k in sorted(files_map.keys())[:1500]:
+    for k in sorted(files_map.keys())[:max_files]:
         fm = files_map[k]
-        manifest_items.append(f"{k}:{fm['sha256']}:{fm['size']}:{fm['perm']}:{fm['owner']}")
+        if fm.get("is_volatile"):
+            manifest_items.append(f"{k}:vol:{fm['perm']}:{fm['owner']}:{fm['group']}")
+        else:
+            manifest_items.append(f"{k}:{fm['sha256']}:{fm['size']}:{fm['perm']}:{fm['owner']}")
     manifest_str = f"cnt:{file_count}|dirs:{dir_count}|files:{file_count}|" + ";;".join(manifest_items)
     tree_hash = hashlib.sha256(manifest_str.encode("utf-8")).hexdigest()
 
@@ -6960,17 +6980,12 @@ def collect_fim(force: bool = False) -> dict:
                         last_sz_f = l_f.get("size", 0)
                         cur_perm_f = c_f.get("perm", "")
                         last_perm_f = l_f.get("perm", "")
+                        cur_og_f = f"{c_f.get('owner', '')}:{c_f.get('group', '')}"
+                        last_og_f = f"{l_f.get('owner', '')}:{l_f.get('group', '')}"
                         disp_name = f"/{rel_f}" if ("/" in rel_f or os.sep in rel_f) else rel_f
+                        is_vol = c_f.get("is_volatile", False)
 
-                        if (cur_h_f and last_h_f and cur_h_f != last_h_f) or (cur_sz_f != last_sz_f) or (c_f.get("mtime") != l_f.get("mtime")):
-                            events_result.append({
-                                "path": p,
-                                "event_type": "MODIFIED",
-                                "severity": ev_sev,
-                                "details": f"Modifikasi isi/ukuran file {disp_name} terdeteksi",
-                                "detected_at": now_iso,
-                            })
-                        elif cur_perm_f and last_perm_f and cur_perm_f != last_perm_f:
+                        if cur_perm_f and last_perm_f and cur_perm_f != last_perm_f:
                             events_result.append({
                                 "path": p,
                                 "event_type": "PERMISSION_CHANGED",
@@ -6978,6 +6993,23 @@ def collect_fim(force: bool = False) -> dict:
                                 "details": f"Hak akses file {disp_name} berubah ({last_perm_f} -> {cur_perm_f})",
                                 "detected_at": now_iso,
                             })
+                        elif cur_og_f and last_og_f and cur_og_f != last_og_f and cur_og_f != ":" and last_og_f != ":":
+                            events_result.append({
+                                "path": p,
+                                "event_type": "OWNERSHIP_CHANGED",
+                                "severity": "warning",
+                                "details": f"Kepemilikan file {disp_name} berubah ({last_og_f} -> {cur_og_f})",
+                                "detected_at": now_iso,
+                            })
+                        elif not is_vol:
+                            if (cur_h_f and last_h_f and cur_h_f != last_h_f) or (cur_sz_f != last_sz_f) or (c_f.get("mtime") != l_f.get("mtime")):
+                                events_result.append({
+                                    "path": p,
+                                    "event_type": "MODIFIED",
+                                    "severity": ev_sev,
+                                    "details": f"Modifikasi isi/ukuran file {disp_name} terdeteksi",
+                                    "detected_at": now_iso,
+                                })
 
                 last_state[p] = {
                     "exists": True,
@@ -7000,18 +7032,20 @@ def collect_fim(force: bool = False) -> dict:
                 last_m = last_info.get("mtime", 0)
                 last_p = last_info.get("permissions", "")
                 last_og = last_info.get("owner_group", "")
+                is_vol_single = _is_volatile_fim_file(p, os.path.basename(p))
 
                 diffs_single = []
                 ev_type_single = "MODIFIED"
-                if (cur_hash and last_h and cur_hash != last_h) or (size_b != last_sz) or (cur_mtime != last_m):
-                    diffs_single.append("Modifikasi isi/ukuran berkas terdeteksi")
-                    ev_type_single = "MODIFIED"
-                elif cur_perm and last_p and cur_perm != last_p:
+                if cur_perm and last_p and cur_perm != last_p:
                     diffs_single.append(f"Hak akses berkas berubah ({last_p} -> {cur_perm})")
                     ev_type_single = "PERMISSION_CHANGED"
                 elif cur_og and last_og and cur_og != last_og:
                     diffs_single.append(f"Kepemilikan berkas berubah ({last_og} -> {cur_og})")
                     ev_type_single = "OWNERSHIP_CHANGED"
+                elif not is_vol_single:
+                    if (cur_hash and last_h and cur_hash != last_h) or (size_b != last_sz) or (cur_mtime != last_m):
+                        diffs_single.append("Modifikasi isi/ukuran berkas terdeteksi")
+                        ev_type_single = "MODIFIED"
 
                 if diffs_single:
                     events_result.append({
@@ -7085,9 +7119,16 @@ def collect_fim(force: bool = False) -> dict:
                             if not bf:
                                 is_changed = True
                                 break
-                            if cf.get("sha256") != bf.get("sha256") or cf.get("size") != bf.get("size") or cf.get("perm") != bf.get("perm"):
-                                is_changed = True
-                                break
+                            is_vol = cf.get("is_volatile", False) or bf.get("is_volatile", False)
+                            if is_vol:
+                                # Berkas volatil: hanya awasi integritas hak akses dan kepemilikan fisik
+                                if cf.get("perm") != bf.get("perm") or cf.get("owner") != bf.get("owner") or cf.get("group") != bf.get("group"):
+                                    is_changed = True
+                                    break
+                            else:
+                                if cf.get("sha256") != bf.get("sha256") or cf.get("size") != bf.get("size") or cf.get("perm") != bf.get("perm") or cf.get("owner") != bf.get("owner"):
+                                    is_changed = True
+                                    break
                 else:
                     # Auto-promosi fallback metadata hash ke SHA-256 asli saat atribut fisik terbukti identik
                     if base_hash.startswith("meta:") and len(cur_hash) == 64 and not cur_hash.startswith("meta:"):
@@ -7101,8 +7142,13 @@ def collect_fim(force: bool = False) -> dict:
                             except (ValueError, IndexError):
                                 pass
 
-                    if (cur_hash and base_hash and cur_hash != base_hash) or (size_b != base_size) or (cur_perm and base_perm and cur_perm != base_perm) or (cur_og and base_og and cur_og != base_og):
-                        is_changed = True
+                    is_vol_single = _is_volatile_fim_file(p, os.path.basename(p))
+                    if is_vol_single:
+                        if (cur_perm and base_perm and cur_perm != base_perm) or (cur_og and base_og and cur_og != base_og):
+                            is_changed = True
+                    else:
+                        if (cur_hash and base_hash and cur_hash != base_hash) or (size_b != base_size) or (cur_perm and base_perm and cur_perm != base_perm) or (cur_og and base_og and cur_og != base_og):
+                            is_changed = True
 
                 status = "CHANGED" if is_changed else "VALID"
 
