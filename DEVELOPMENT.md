@@ -354,6 +354,15 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.11
+
+### Audit Tindakan Akun Pengguna Terpadu (Reguler & Sistem) (v4.11.11)
+- **Pencatatan Tindakan Akun Sistem:** Menambahkan pelacakan tindakan nyata untuk akun non-manusia/sistem (seperti www-data, mysql, redis, postfix, root) mencakup proses layanan aktif (PID, command, PWD), tugas cron terjadwal, dan log jurnal sistem.
+- **Riwayat Tindakan Akun Pengguna (Tab Akun):** Memperluas tabel riwayat tindakan akun agar mencatat aksi administratif (buat/kunci/buka/hapus akun) dan tindakan operasional nyata (sesi login aktif, eksekusi layanan sistem, cron, dan aktivitas berkas).
+- **Aktivitas Pengguna & Audit Perintah (Rincian User):** Menambahkan filter dan tampilan chip Proses Layanan, Tugas Cron, dan Log Sistem sehingga halaman rincian user tidak lagi kosong untuk akun sistem.
+- **Sinkronisasi Dual-Render:** Memastikan presentasi Jinja server-side dan JavaScript client-side sinkron identik tanpa perbedaan.
+
+
 ## Versi 4.11.10
 
 ### Standarisasi Integritas Berkas (FIM) & Eliminasi Atribusi Semu (v4.11.10)

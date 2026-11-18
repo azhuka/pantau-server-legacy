@@ -480,7 +480,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.10"
+AGENT_VERSION = "4.11.11"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -5660,10 +5660,131 @@ def collect_user_logins(max_events: int = 100, target_user: str | None = None) -
         except Exception:
             pass
 
+    # 7. Deteksi Proses Layanan & Daemon Latar Belakang (Akun Reguler & Sistem)
+    if target_user:
+        try:
+            ps_u_cmd = ["ps", "-u", target_user, "-o", "pid,lstart,stat,time,command", "--no-headers"]
+            res_u = _run_cmd(ps_u_cmd, timeout=4)
+            if res_u and res_u.stdout:
+                seen_pids = set()
+                for pline in res_u.stdout.splitlines():
+                    pparts = pline.split(None, 8)
+                    if len(pparts) < 9:
+                        continue
+                    pid_str, dow, mon, day, tm, yr, stat_str, cputime, cmd_str = pparts
+                    if pid_str in seen_pids:
+                        continue
+                    seen_pids.add(pid_str)
+                    cmd_clean = cmd_str.strip()
+                    if not cmd_clean:
+                        continue
+                    if "agent_pantau" in cmd_clean and target_user != "root":
+                        continue
+                    try:
+                        dt_proc = datetime.strptime(f"{dow} {mon} {day} {tm} {yr}", "%a %b %d %H:%M:%S %Y")
+                        proc_ts = dt_proc.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        proc_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                    cwd_path = "—"
+                    try:
+                        cwd_path = os.readlink(f"/proc/{pid_str}/cwd")
+                    except Exception:
+                        pass
+
+                    proc_key = (target_user, pid_str, "proses")
+                    if proc_key not in seen_sudo:
+                        seen_sudo.add(proc_key)
+                        events.append({
+                            "ts": proc_ts,
+                            "user": target_user,
+                            "type": "proses",
+                            "from": "(proses)",
+                            "tty": f"PID {pid_str}",
+                            "pwd": cwd_path,
+                            "target_user": target_user,
+                            "alert": f"Proses Layanan Aktif ({stat_str})",
+                            "method": cmd_clean,
+                            "active": True,
+                        })
+        except Exception:
+            pass
+
+        # 8. Deteksi Tugas Terjadwal (Cron) Milik Pengguna
+        try:
+            cron_data = collect_cron_jobs()
+            for c_item in cron_data.get("jobs", []):
+                if c_item.get("user") == target_user:
+                    cmd_c = (c_item.get("command") or "").strip()
+                    if not cmd_c:
+                        continue
+                    sched_c = c_item.get("schedule") or "terjadwal"
+                    ident_c = c_item.get("ident") or "cron"
+                    now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    cron_key = (target_user, sched_c, cmd_c, "cron")
+                    if cron_key not in seen_sudo:
+                        seen_sudo.add(cron_key)
+                        events.append({
+                            "ts": now_ts,
+                            "user": target_user,
+                            "type": "cron",
+                            "from": f"({ident_c})",
+                            "tty": "cron",
+                            "pwd": "~",
+                            "target_user": target_user,
+                            "alert": f"Jadwal: {sched_c}",
+                            "method": cmd_c,
+                            "active": True,
+                        })
+        except Exception:
+            pass
+
+        # 9. Log Jurnal Sistem Terkait UID Pengguna
+        try:
+            import pwd
+            pw_entry = pwd.getpwnam(target_user)
+            uid_val = pw_entry.pw_uid
+            cmd_j = ["journalctl", "-q", "-o", "short-iso", f"_UID={uid_val}", "-n", "30", "--no-pager"]
+            res_j = _run_cmd(cmd_j, timeout=5)
+            if res_j and res_j.stdout:
+                p_jline = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})[^\s]*\s+\S+\s+(?:([^:\[]+)(?:\[\d+\])?:)?\s*(.*)$")
+                for jline in res_j.stdout.splitlines():
+                    jline = jline.strip()
+                    if not jline:
+                        continue
+                    m_j = p_jline.match(jline)
+                    if not m_j:
+                        continue
+                    j_ts_raw, j_ident_raw, j_msg_raw = m_j.groups()
+                    j_ts = j_ts_raw.replace("T", " ")
+                    j_ident = (j_ident_raw or "sistem").strip()
+                    j_msg = (j_msg_raw or "").strip()
+                    if not j_msg:
+                        continue
+                    if "agent_pantau" in j_msg:
+                        continue
+                    j_key = (target_user, j_ts, j_msg[:40], "sistem")
+                    if j_key not in seen_sudo:
+                        seen_sudo.add(j_key)
+                        events.append({
+                            "ts": j_ts,
+                            "user": target_user,
+                            "type": "sistem",
+                            "from": f"({j_ident})",
+                            "tty": "jurnal",
+                            "pwd": "—",
+                            "target_user": target_user,
+                            "alert": f"Log Sistem ({j_ident})",
+                            "method": j_msg,
+                            "active": False,
+                        })
+        except Exception:
+            pass
+
     # Sinkronisasi timestamp sesi aktif agar konsisten dan tidak tertinggal di bawah perintah yang terjadi di dalamnya
-    max_ev_ts = max((str(e.get("ts", "")) for e in events if e.get("type") != "aktif" and len(str(e.get("ts", ""))) >= 19), default="")
+    max_ev_ts = max((str(e.get("ts", "")) for e in events if e.get("type") not in ("aktif", "proses") and len(str(e.get("ts", ""))) >= 19), default="")
     for e in events:
-        if e.get("type") == "aktif":
+        if e.get("type") in ("aktif", "proses"):
             login_t = str(e.get("login_time", ""))
             cur_ts = str(e.get("ts", ""))
             if login_t and cur_ts < login_t:
@@ -5674,8 +5795,19 @@ def collect_user_logins(max_events: int = 100, target_user: str | None = None) -
     def _sort_key(ev):
         t = str(ev.get("ts", ""))
         typ = ev.get("type", "")
-        # Sesi Aktif selalu di atas perintah yang terjadi dalam sesi tersebut
-        prio = 4 if typ == "aktif" else (3 if typ == "selesai" else (1 if typ in ("login", "sukses") else 2))
+        # Sesi Aktif & Proses Aktif diprioritaskan di atas
+        if typ == "aktif":
+            prio = 5
+        elif typ == "proses":
+            prio = 4
+        elif typ == "selesai":
+            prio = 3
+        elif typ in ("login", "sukses"):
+            prio = 1
+        elif typ == "cron":
+            prio = 3
+        else:
+            prio = 2
         return (t, prio)
 
     events.sort(key=_sort_key, reverse=True)

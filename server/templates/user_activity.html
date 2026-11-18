@@ -151,6 +151,10 @@
   <span class="chip chip-inactive" style="cursor:pointer;padding:3px 10px;font-size:11px" onclick="setLlTypeFilter('selesai')" title="Klik untuk filter Sesi Selesai">Sesi Selesai: <b id="chip-selesai">0</b></span>
   <span class="chip" style="cursor:pointer;padding:3px 10px;font-size:11px;background:rgba(56,189,248,0.12);color:#38bdf8;border:1px solid rgba(56,189,248,0.3)" onclick="setLlTypeFilter('login')" title="Klik untuk filter Sesi Login Berhasil">Sesi Login: <b id="chip-login">0</b></span>
   <span style="display:inline-block;width:1px;height:18px;background:var(--border);margin:0 4px"></span>
+  <span class="chip chip-info" style="cursor:pointer;padding:3px 10px;font-size:11px" onclick="setLlTypeFilter('proses')" title="Klik untuk filter Proses Layanan Aktif">Proses: <b id="chip-proses">0</b></span>
+  <span class="chip" style="cursor:pointer;padding:3px 10px;font-size:11px;background:rgba(168,85,247,0.12);color:#c084fc;border:1px solid rgba(168,85,247,0.3)" onclick="setLlTypeFilter('cron')" title="Klik untuk filter Tugas Terjadwal (Cron)">Cron: <b id="chip-cron">0</b></span>
+  <span class="chip" style="cursor:pointer;padding:3px 10px;font-size:11px;background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)" onclick="setLlTypeFilter('sistem')" title="Klik untuk filter Log Jurnal Sistem">Sistem: <b id="chip-sistem">0</b></span>
+  <span style="display:inline-block;width:1px;height:18px;background:var(--border);margin:0 4px"></span>
   <span class="chip chip-info" style="cursor:pointer;padding:3px 10px;font-size:11px" onclick="setLlTypeFilter('perintah')" title="Klik untuk filter Semua Perintah (Shell, Sudo, Polkit)">Perintah: <b id="chip-perintah">0</b></span>
   <span class="chip chip-info" style="cursor:pointer;padding:3px 10px;font-size:11px;opacity:0.85" onclick="setLlTypeFilter('shell')" title="Klik untuk filter Perintah Shell (Non-Sudo)">Shell: <b id="chip-shell">0</b></span>
   <span class="chip chip-warn" style="cursor:pointer;padding:3px 10px;font-size:11px;opacity:0.85" onclick="setLlTypeFilter('sudo')" title="Klik untuk filter Sudo">Sudo: <b id="chip-sudo">0</b></span>
@@ -173,6 +177,9 @@
         <select id="ll-type-filter" class="filter-select" onchange="filterLoginsTable()">
           <option value="">Semua Jenis</option>
           <option value="aktif">Sesi Aktif (Masih Login)</option>
+          <option value="proses">Proses / Layanan Aktif</option>
+          <option value="cron">Tugas Terjadwal (Cron)</option>
+          <option value="sistem">Log Jurnal Sistem</option>
           <option value="selesai">Sesi Selesai (Logout)</option>
           <option value="login">Sesi Login (Berhasil)</option>
           <option value="perintah">Semua Perintah (Shell &amp; Sudo)</option>
@@ -275,7 +282,7 @@ let activityBusy = false;
 let llCount = 0;
 
 function renderChips(logins) {
-  const c = {aktif: 0, selesai: 0, login: 0, sudo: 0, sudo_gagal: 0, gagal: 0, polkit: 0, polkit_gagal: 0, shell: 0};
+  const c = {aktif: 0, selesai: 0, login: 0, sudo: 0, sudo_gagal: 0, gagal: 0, polkit: 0, polkit_gagal: 0, shell: 0, proses: 0, cron: 0, sistem: 0};
   for (const x of logins) {
     if (x.type === 'login' || x.type === 'sukses') c.login++;
     else if (c.hasOwnProperty(x.type)) c[x.type]++;
@@ -289,6 +296,12 @@ function renderChips(logins) {
   if (elSelesai) elSelesai.textContent = c.selesai;
   const elLogin = document.getElementById('chip-login');
   if (elLogin) elLogin.textContent = c.login;
+  const elProses = document.getElementById('chip-proses');
+  if (elProses) elProses.textContent = c.proses;
+  const elCron = document.getElementById('chip-cron');
+  if (elCron) elCron.textContent = c.cron;
+  const elSistem = document.getElementById('chip-sistem');
+  if (elSistem) elSistem.textContent = c.sistem;
   const elPerintah = document.getElementById('chip-perintah');
   if (elPerintah) elPerintah.textContent = c.shell + c.sudo + c.polkit;
   const elShell = document.getElementById('chip-shell');
@@ -306,6 +319,8 @@ function renderChips(logins) {
     if (c.aktif > 0) {
       const actTtys = logins.filter(x => x.type === 'aktif').map(x => x.tty + (x.from && x.from !== '(lokal)' ? ' @ ' + x.from : '')).join(', ');
       elStatSessions.innerHTML = `${c.aktif} Sesi <span style="font-size:11px;color:var(--green);font-weight:normal;margin-left:4px">(${escapeHtml(actTtys)})</span>`;
+    } else if (c.proses > 0) {
+      elStatSessions.innerHTML = `${c.proses} Proses <span style="font-size:11px;color:var(--cyan);font-weight:normal;margin-left:4px">(Layanan Aktif)</span>`;
     } else {
       elStatSessions.textContent = '0 Sesi';
     }
@@ -322,9 +337,9 @@ function renderChips(logins) {
         elStatLastLogin.title = `${tStr} (${fromDesc})`;
       }
     } else if (elStatLastLogin.textContent.includes('Never logged in') || elStatLastLogin.textContent.includes('Belum ada riwayat')) {
-      const lastEv = logins.find(x => x.type === 'login' || x.type === 'selesai' || x.type === 'shell' || x.type === 'sudo');
+      const lastEv = logins.find(x => x.type === 'login' || x.type === 'selesai' || x.type === 'shell' || x.type === 'sudo' || x.type === 'proses' || x.type === 'sistem');
       if (lastEv && lastEv.ts) {
-        const fromDesc = (lastEv.from && lastEv.from !== '(lokal)') ? lastEv.from : 'Web Terminal';
+        const fromDesc = lastEv.type === 'proses' ? 'Proses Layanan' : (lastEv.type === 'sistem' ? 'Log Sistem' : ((lastEv.from && lastEv.from !== '(lokal)') ? lastEv.from : 'Web Terminal'));
         elStatLastLogin.textContent = `${lastEv.ts} (${fromDesc})`;
         elStatLastLogin.title = `${lastEv.ts} (${fromDesc})`;
       }
@@ -530,6 +545,9 @@ function renderLoginsData(rawLogins) {
   if (tbody) {
     tbody.innerHTML = logins.map(x => {
       const isAktif = (x.type === 'aktif');
+      const isProses = (x.type === 'proses');
+      const isCron = (x.type === 'cron');
+      const isSistem = (x.type === 'sistem');
       const isSudo = (x.type === 'sudo');
       const isSudoGagal = (x.type === 'sudo_gagal');
       const isPolkit = (x.type === 'polkit');
@@ -540,15 +558,27 @@ function renderLoginsData(rawLogins) {
       const isLogin = (x.type === 'login' || x.type === 'sukses');
 
       const cls = isAktif ? 'badge-up'
+                : isProses ? 'badge-info'
                 : (isShell && x.active) ? 'badge-info'
                 : (isSudo || isPolkit) ? 'badge-warn'
                 : isShell ? 'badge-info'
+                : isSistem ? 'badge-info'
+                : isCron ? 'badge-muted'
                 : (isGagal || isSudoGagal || isPolkitGagal) ? 'badge-down' : 'badge-muted';
 
       let typeLabel = '';
       let badgeStyle = '';
       if (isAktif) {
         typeLabel = '<span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block;margin-right:4px"></span>Sesi Aktif';
+      } else if (isProses) {
+        typeLabel = '<span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block;margin-right:4px"></span>Proses';
+        badgeStyle = 'style="background:rgba(56,189,248,0.12);color:#38bdf8;border:1px solid rgba(56,189,248,0.3)"';
+      } else if (isCron) {
+        typeLabel = 'Tugas Cron';
+        badgeStyle = 'style="background:rgba(168,85,247,0.12);color:#c084fc;border:1px solid rgba(168,85,247,0.3)"';
+      } else if (isSistem) {
+        typeLabel = 'Log Sistem';
+        badgeStyle = 'style="background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)"';
       } else if (isSelesai) {
         typeLabel = 'Sesi Selesai';
       } else if (isLogin) {
@@ -575,7 +605,13 @@ function renderLoginsData(rawLogins) {
       const detailedStart = formatDetailed(dtStart);
 
       let timeTooltip = '';
-      if (isSudo || isSudoGagal || isPolkit || isPolkitGagal) {
+      if (isProses) {
+        timeTooltip = 'Mulai Proses: ' + detailedStart;
+      } else if (isCron) {
+        timeTooltip = 'Jadwal Tugas Cron: ' + detailedStart;
+      } else if (isSistem) {
+        timeTooltip = 'Waktu Log Sistem: ' + detailedStart;
+      } else if (isSudo || isSudoGagal || isPolkit || isPolkitGagal) {
         timeTooltip = 'Waktu Eksekusi: ' + detailedStart;
       } else if (isShell) {
         timeTooltip = x.ts ? ('Waktu Eksekusi: ' + (detailedStart || x.ts)) : 'Waktu: Berurutan kronologis';
@@ -689,6 +725,15 @@ function renderLoginsData(rawLogins) {
         methodCell = '<span style="color:#38bdf8;font-size:11px" title="Login berhasil' + (x.from ? ' dari ' + escapeHtml(x.from) : '') + '">Login Berhasil' + methText + '</span>';
       } else if (isGagal) {
         methodCell = '<span style="color:var(--red);font-size:11px" title="Percobaan login gagal: ' + escapeHtml(x.method || 'Password salah') + '">Login Gagal: ' + escapeHtml(x.method || 'Otentikasi ditolak') + '</span>';
+      } else if (isProses) {
+        methodCell = '<span style="color:var(--cyan);font-weight:600;font-size:10.5px">' + escapeHtml(x.alert || 'Proses Layanan Aktif') + ':</span> '
+          + '<code class="cmd-code" style="color:var(--text-bright);border-color:rgba(56,189,248,0.3)" title="' + escapeHtml(x.method || '—') + '">' + escapeHtml(x.method || '—') + '</code>';
+      } else if (isCron) {
+        methodCell = '<span style="color:var(--dim);font-weight:600;font-size:10.5px">' + escapeHtml(x.alert || 'Tugas Terjadwal') + ':</span> '
+          + '<code class="cmd-code" title="' + escapeHtml(x.method || '—') + '">' + escapeHtml(x.method || '—') + '</code>';
+      } else if (isSistem) {
+        methodCell = '<span style="color:var(--dim);font-weight:600;font-size:10.5px">' + escapeHtml(x.alert || 'Log Sistem') + ':</span> '
+          + '<span class="mono" style="font-size:11px;color:var(--text)" title="' + escapeHtml(x.method || '—') + '">' + escapeHtml(x.method || '—') + '</span>';
       } else {
         methodCell = '<span style="color:var(--dim)">—</span>';
       }
@@ -696,7 +741,7 @@ function renderLoginsData(rawLogins) {
       const isSessionBoundary = (isSelesai || isAktif);
       const rowStyle = isSessionBoundary ? 'style="border-top:2px solid var(--border);background:rgba(255,255,255,0.01)"' : '';
       const filterType = isLogin ? 'login' : (isSelesai ? 'selesai' : (x.type || ''));
-      const rowSearch = `${x.ts || ''} ${x.user || ''} ${rawFrom} ${x.tty || ''} ${x.pwd || ''} ${x.method || ''} ${filterType} ${isAktif ? 'aktif' : ''} ${isSelesai ? 'selesai' : ''} ${isLogin ? 'login' : ''} ${isShell ? 'shell' : ''} ${(isSudo || isPolkit || isShell) ? 'perintah' : ''}`.toLowerCase();
+      const rowSearch = `${x.ts || ''} ${x.user || ''} ${rawFrom} ${x.tty || ''} ${x.pwd || ''} ${x.method || ''} ${filterType} ${isAktif ? 'aktif' : ''} ${isProses ? 'proses' : ''} ${isCron ? 'cron' : ''} ${isSistem ? 'sistem' : ''} ${isSelesai ? 'selesai' : ''} ${isLogin ? 'login' : ''} ${isShell ? 'shell' : ''} ${(isSudo || isPolkit || isShell) ? 'perintah' : ''}`.toLowerCase();
       return '<tr ' + rowStyle + ' data-type="' + escapeHtml(filterType) + '" data-search="' + escapeHtml(rowSearch) + '">'
         + '<td class="mono col-time" style="font-size:10.5px;white-space:nowrap" title="' + escapeHtml(timeTooltip) + '">'
         + '<span class="mono" style="font-size:10.5px;color:var(--text);font-weight:600">' + escapeHtml(essentialTime) + '</span>'

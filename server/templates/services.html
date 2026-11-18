@@ -3821,7 +3821,7 @@ div[style*="position: fixed"] .card {
     {% set acc_acts = [] %}
     {% if actions %}
       {% for act in actions %}
-        {% if act.action and ('user_' in act.action or 'user' in act.action or 'akun ' in (act.target|lower)) %}
+        {% if act.action and ('user_' in act.action or 'user' in act.action or 'akun ' in (act.target|lower) or act.action in ('login_session', 'service_exec', 'cron_job', 'fim_event', 'proses', 'sudo', 'shell') or act.category == 'account') %}
           {% set _ = acc_acts.append(act) %}
         {% endif %}
       {% endfor %}
@@ -3829,7 +3829,7 @@ div[style*="position: fixed"] .card {
     <div class="card-header" style="align-items:center;display:flex;justify-content:space-between">
       <div>
         <h3 style="margin:0;font-size:15px;font-weight:600">Riwayat Tindakan Akun Pengguna</h3>
-        <span style="font-size:12px;color:var(--dim)">Catatan riwayat pembuatan, penguncian, pembukaan kunci, dan penghapusan akun di server ini</span>
+        <span style="font-size:12px;color:var(--dim)">Catatan riwayat tindakan administratif, operasional layanan, sesi login, cron, dan aktivitas berkas seluruh akun di server ini</span>
       </div>
       <span class="badge badge-muted" id="acc-action-badge">{{ acc_acts|length }} tindakan</span>
     </div>
@@ -3838,9 +3838,9 @@ div[style*="position: fixed"] .card {
         <thead>
           <tr>
             <th class="col-time-detailed" style="white-space:nowrap;width:195px;min-width:185px">Waktu</th>
-            <th>Pengguna (Admin)</th>
+            <th>Pengguna / Pelaku</th>
             <th>Tindakan</th>
-            <th>Target Akun</th>
+            <th>Target Akun / Objek</th>
             <th>Status</th>
             <th>Keterangan / Hasil</th>
           </tr>
@@ -10110,7 +10110,10 @@ function renderActionHistory(actions) {
     const accActions = (actions || []).filter(a => {
       const act = (a.action || '').toLowerCase();
       const tgt = (a.target || '').toLowerCase();
-      return act.startsWith('user_') || act.includes('user') || act.includes('pengguna') || tgt.includes('akun ');
+      const cat = (a.category || '').toLowerCase();
+      return act.startsWith('user_') || act.includes('user') || act.includes('pengguna') || tgt.includes('akun ') ||
+             ['login_session', 'service_exec', 'cron_job', 'fim_event', 'proses', 'sudo', 'shell'].includes(act) ||
+             cat === 'account';
     });
     if (accBadge) {
       accBadge.textContent = accActions.length + (isEn ? ' actions' : ' tindakan');

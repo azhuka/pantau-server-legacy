@@ -1425,6 +1425,94 @@ def user_activity_page(request: Request, sid: int, username: str, db: Session = 
         except Exception:
             initial_logins = []
 
+    if not initial_logins and extra:
+        cached_acts = []
+        now_dt = datetime.utcnow()
+        now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 1. Sesi aktif dari account
+        if account and account.get("sessions"):
+            for s in account.get("sessions", []):
+                s_tty = s.get("tty", "pts")
+                s_from = s.get("from") or "(lokal)"
+                s_time = s.get("time") or now_str
+                cached_acts.append({
+                    "ts": s_time,
+                    "user": username,
+                    "type": "aktif",
+                    "from": s_from,
+                    "tty": s_tty,
+                    "pwd": "—",
+                    "target_user": username,
+                    "alert": "Sedang Berlangsung",
+                    "method": f"{s_tty} (Sesi Aktif)",
+                    "active": True,
+                })
+
+        # 2. Tugas terjadwal dari cron_jobs
+        if extra.cron_jobs:
+            try:
+                cron_obj = json.loads(extra.cron_jobs)
+                for cj in (cron_obj.get("jobs", []) if isinstance(cron_obj, dict) else []):
+                    if cj.get("user") == username:
+                        cj_cmd = (cj.get("command") or "").strip()
+                        cj_sched = cj.get("schedule") or "terjadwal"
+                        cj_ident = cj.get("ident") or "cron"
+                        cached_acts.append({
+                            "ts": extra.updated_at.strftime("%Y-%m-%d %H:%M:%S") if extra.updated_at else now_str,
+                            "user": username,
+                            "type": "cron",
+                            "from": f"({cj_ident})",
+                            "tty": "cron",
+                            "pwd": "~",
+                            "target_user": username,
+                            "alert": f"Jadwal: {cj_sched}",
+                            "method": cj_cmd,
+                            "active": True,
+                        })
+            except Exception:
+                pass
+
+        # 3. Kejadian FIM terkait user
+        try:
+            fim_user_q = (
+                db.query(FIMEvent)
+                .filter(FIMEvent.server_id == sid)
+                .order_by(desc(FIMEvent.detected_at))
+                .limit(30)
+                .all()
+            )
+            for fe in fim_user_q:
+                p_low = fe.path.lower()
+                is_match = False
+                if username == "www-data" and ("/var/www" in p_low or "nginx" in p_low or "apache" in p_low):
+                    is_match = True
+                elif username == "mysql" and ("/var/lib/mysql" in p_low or "my.cnf" in p_low):
+                    is_match = True
+                elif username == "root" and ("/etc/" in p_low or "/root" in p_low):
+                    is_match = True
+                elif f"/home/{username}" in fe.path:
+                    is_match = True
+
+                if is_match:
+                    cached_acts.append({
+                        "ts": fe.detected_at.strftime("%Y-%m-%d %H:%M:%S") if fe.detected_at else now_str,
+                        "user": username,
+                        "type": "sistem",
+                        "from": "(fim)",
+                        "tty": "fim",
+                        "pwd": fe.path,
+                        "target_user": username,
+                        "alert": f"Integritas: {fe.event_type}",
+                        "method": fe.details or fe.path,
+                        "active": False,
+                    })
+        except Exception:
+            pass
+
+        if cached_acts:
+            initial_logins = cached_acts
+
     return tpl(
         request,
         "user_activity.html",
