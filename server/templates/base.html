@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token }}">
 <title>{% block title %}Pantau Server{% endblock %}</title>
-<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.25' }}">
+<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.26' }}">
 <style id="noc-act-dropdown-anti-cache">
   /* Override Mutlak Anti-Cache untuk Tombol Dropdown Tindakan yang Non-Aktif (Disabled) */
   .noc-act-dropdown-item:disabled,
@@ -3078,8 +3078,7 @@ body.show-alert-banner .main{padding-top:72px}
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg></span> <span class="nav-label" data-i18n="menu_logs">Log</span>
     </a>
     <a href="javascript:void(0)" onclick="toggleActivityConsole();closeMobDrawer()" class="nav-link" id="nav-btn-activity" title="Activity Console Live Stream (Ctrl+`)">
-      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></span> <span class="nav-label">Activity Console</span>
-      <span id="nav-activity-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;margin-left:auto"></span>
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></span> <span class="nav-label">Activity Console <span id="nav-activity-dot" class="sb-act-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;margin-left:6px;vertical-align:middle"></span></span>
     </a>
     {% endif %}
     {% if user and (user.is_master_admin() or user.has_perm('can_audit') or user.has_perm('can_manage_servers')) %}
@@ -3113,7 +3112,7 @@ body.show-alert-banner .main{padding-top:72px}
   </nav>
   <div class="sidebar-footer">
     <div class="sb-footer-brand">Pantau Server</div>
-    <div class="sb-footer-ver">v{{ app_version or '4.11.25' }}</div>
+    <div class="sb-footer-ver">v{{ app_version or '4.11.26' }}</div>
     <div class="sb-clock-card" id="sbClockBox" 
          data-server-tz="{{ server_tz or 'WITA' }}" 
          data-server-offset="{{ server_tz_offset if server_tz_offset is defined else 480 }}"
@@ -3156,11 +3155,6 @@ body.show-alert-banner .main{padding-top:72px}
     </div>
 
     <div class="topbar-global-right" style="display:flex;align-items:center;gap:8px">
-      <button type="button" id="topbarActivityBtn" onclick="toggleActivityConsole()" class="noc-topbar-activity-btn" title="Buka/Tutup Activity Console (Ctrl+`)">
-        <span id="topbarActivityDot" class="noc-activity-dot online"></span>
-        <span class="noc-activity-label">⚡ Activity</span>
-        <span id="topbarActivityErrBadge" class="badge badge-danger" style="display:none;font-size:10px;padding:1px 5px;line-height:1">0</span>
-      </button>
       <div class="noc-topbar-clock" id="topbarClockWidget" onclick="toggleSidebarClockMode()" onkeydown="if(event.key==='Enter'||event.key===' ')toggleSidebarClockMode()" role="button" tabindex="0" title="Memuat waktu...">
         <span class="noc-topbar-clock-dot"></span>
         <span class="noc-topbar-clock-time mono" id="topbarClockTime">--:--:--</span>
@@ -3213,7 +3207,7 @@ body.show-alert-banner .main{padding-top:72px}
     </div>
   </div>
   <!-- Table Container -->
-  <div id="activityTableContainer" onscroll="handleActivityScroll()" class="activity-table-container">
+  <div id="activityTableContainer" onscroll="handleActivityScroll()" class="activity-table-container" style="overflow-y:auto">
     <table class="activity-table">
       <thead>
         <tr>
@@ -6828,12 +6822,13 @@ class NocMetricChart {
 // Auto-wrap stand-alone tables in a scroll container so they are smoothly swipeable on mobile
 function makeTablesResponsive() {
   document.querySelectorAll('table').forEach(tbl => {
-    if (!tbl.closest('div[style*="overflow"], .table-responsive, .terminal-window')) {
-      const wrap = document.createElement('div');
-      wrap.className = 'table-responsive';
-      tbl.parentNode.insertBefore(wrap, tbl);
-      wrap.appendChild(tbl);
+    if (tbl.classList.contains('activity-table') || tbl.closest('.activity-console-drawer, .activity-table-container, div[style*="overflow"], .table-responsive, .terminal-window')) {
+      return;
     }
+    const wrap = document.createElement('div');
+    wrap.className = 'table-responsive';
+    tbl.parentNode.insertBefore(wrap, tbl);
+    wrap.appendChild(tbl);
   });
 }
 if (document.readyState === 'loading') {

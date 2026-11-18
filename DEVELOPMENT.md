@@ -354,6 +354,14 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.26
+
+- Skala Tipografi Dasbor 100%: Hostname 14.5px bold, baris data 13px, KPI cards 22px tegas, LED gauge meter baterai 72px presisi.
+- Sasis Kolom Adaptif Anti-Scroll: Menghapus persentase kaku CPU/RAM/Disk (82%), mengganti dengan bobot ramping presisi sehingga muat penuh tanpa horizontal scroll pada zoom 150% (viewport 1280px).
+- Sidebar Collapsed Sanitization: Menjamin titik status Activity Console tersembunyi total saat sidebar collapsed (sb-collapsed).
+- Activity Console Drawer: Menegakkan thead sticky header dan table-layout fixed di dalam container scrolling log aktivitas, serta menaruh tombol Activity Console di topbar seluruh halaman.
+
+
 ## Versi 4.11.25
 
 ### Pembaruan & Perbaikan UI/UX Dasbor
