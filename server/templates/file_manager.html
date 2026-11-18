@@ -175,6 +175,10 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
         <span>Upload File</span>
       </button>
+      <button type="button" id="fm-btn-storage-triage" class="btn btn-sm" onclick="fmOpenStorageTriage()" style="display:inline-flex;align-items:center;gap:5px;border-color:rgba(234,179,8,0.4);color:var(--yellow)" {% if not is_online %}disabled title="Server offline — aksi dinonaktifkan"{% endif %}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <span>Storage Triage</span>
+      </button>
     </div>
   </div>
 
@@ -566,6 +570,138 @@
         </button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- MODAL: Storage Triage & Reclaim Diagnostics (ADR-0039) -->
+<div id="fm-storage-triage-modal" class="modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(3px);z-index:9999;align-items:flex-start;justify-content:center;padding:clamp(20px, 4.5vh, 48px) 16px 20px 16px;box-sizing:border-box;overflow-y:auto" onclick="if(event.target===this)fmCloseStorageTriage()">
+  <div class="workspace-modal" style="width:85vw;max-width:1440px;height:84vh;max-height:84vh;display:flex;flex-direction:column;background:var(--card, #151f33);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-lg);color:var(--text);overflow:hidden">
+    <!-- Header Modal -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap">
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:rgba(234,179,8,0.15);color:var(--yellow);border:1px solid rgba(234,179,8,0.3)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <h3 style="margin:0;font-size:15.5px;font-weight:600;color:var(--text)">Storage Triage &amp; Safe Reclaim</h3>
+            <span class="badge badge-info" id="fm-triage-mount-badge">Partisi /</span>
+          </div>
+          <div style="font-size:11.5px;color:var(--dim);margin-top:2px" id="fm-triage-part-info">Memuat status partisi...</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="fmRefreshStorageTriage()" id="fm-triage-refresh-btn" style="height:30px;display:inline-flex;align-items:center;gap:6px" title="Pindai Ulang">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+          <span>Pindai Ulang</span>
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="fmCloseStorageTriage()" style="font-size:20px;line-height:1;padding:2px 8px;cursor:pointer" aria-label="Tutup">&times;</button>
+      </div>
+    </div>
+
+    <!-- Tabs Navigasi Sub-Header -->
+    <div style="display:flex;align-items:center;gap:6px;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0;overflow-x:auto">
+      <button type="button" class="btn btn-sm" id="fm-tab-btn-hogs" onclick="fmSwitchTriageTab('hogs')" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;background:var(--hover);border-color:var(--blue);color:var(--blue)">
+        <span>📂 Direktori Terbesar</span>
+        <span class="badge badge-muted" id="fm-triage-count-hogs">0</span>
+      </button>
+      <button type="button" class="btn btn-sm btn-ghost" id="fm-tab-btn-ghosts" onclick="fmSwitchTriageTab('ghosts')" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:6px">
+        <span>👻 Berkas Ghost (Deleted FDs)</span>
+        <span class="badge badge-muted" id="fm-triage-count-ghosts">0</span>
+      </button>
+      <button type="button" class="btn btn-sm btn-ghost" id="fm-tab-btn-runaway" onclick="fmSwitchTriageTab('runaway')" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:6px">
+        <span>⚡ Runaway Files (&lt;60m)</span>
+        <span class="badge badge-muted" id="fm-triage-count-runaway">0</span>
+      </button>
+      <button type="button" class="btn btn-sm btn-ghost" id="fm-tab-btn-reclaim" onclick="fmSwitchTriageTab('reclaim')" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:6px">
+        <span>🧹 Katalog Safe Reclaim</span>
+        <span class="badge badge-warn" id="fm-triage-count-reclaim">0 B</span>
+      </button>
+    </div>
+
+    <!-- Body Modal: Multi-Panel Tab Container -->
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;background:var(--bg-card);position:relative">
+      <!-- Loading Overlay -->
+      <div id="fm-triage-loading" style="display:none;position:absolute;inset:0;background:rgba(15,23,42,0.85);backdrop-filter:blur(2px);z-index:10;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+        <div class="spinner" style="width:36px;height:36px;border-width:3px;border-color:rgba(59,130,246,0.3);border-top-color:var(--blue)"></div>
+        <div style="font-size:13px;color:var(--text);font-weight:500">Memindai sistem penyimpanan...</div>
+        <div style="font-size:11.5px;color:var(--dim)">Menelaah space hogs, ghost files, dan katalog safe reclaim</div>
+      </div>
+
+      <!-- Panel 1: Space Hogs -->
+      <div id="fm-triage-panel-hogs" style="display:block">
+        <div style="margin-bottom:12px;font-size:12px;color:var(--dim)">
+          Direktori tingkat pertama yang menghabiskan kapasitas terbesar pada partisi (dianalisis dengan proteksi one-file-system).
+        </div>
+        <div class="table-responsive">
+          <table class="fm-table" style="font-size:12px">
+            <thead>
+              <tr>
+                <th style="width:50%">Path Direktori</th>
+                <th style="width:20%">Ukuran</th>
+                <th style="width:30%">Tindakan</th>
+              </tr>
+            </thead>
+            <tbody id="fm-triage-hogs-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Panel 2: Ghost Files -->
+      <div id="fm-triage-panel-ghosts" style="display:none">
+        <div style="margin-bottom:12px;font-size:12px;color:var(--dim);line-height:1.5">
+          <strong>Ghost Files (Unlinked Open File Descriptors):</strong> Berkas yang telah dihapus menggunakan <code>rm</code> namun ruang disk tidak dilepas oleh filesystem Linux karena masih dibuka oleh proses yang berjalan. Mulai ulang service atau reload proses untuk melepaskan kapasitas.
+        </div>
+        <div class="table-responsive">
+          <table class="fm-table" style="font-size:12px">
+            <thead>
+              <tr>
+                <th style="width:22%">Proses (PID)</th>
+                <th style="width:48%">Path Berkas Asli (Deleted)</th>
+                <th style="width:15%">Tertahan</th>
+                <th style="width:15%">Tindakan</th>
+              </tr>
+            </thead>
+            <tbody id="fm-triage-ghosts-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Panel 3: Runaway Files -->
+      <div id="fm-triage-panel-runaway" style="display:none">
+        <div style="margin-bottom:12px;font-size:12px;color:var(--dim);line-height:1.5">
+          <strong>Runaway Files:</strong> Berkas log atau teks non-database yang mengalami lonjakan ukuran abnormal (&ge; 15 MB) dan termodifikasi dalam 60 menit terakhir. Gunakan aksi <em>Truncate</em> untuk mengosongkan log secara instan tanpa memutus proses aplikasi.
+        </div>
+        <div class="table-responsive">
+          <table class="fm-table" style="font-size:12px">
+            <thead>
+              <tr>
+                <th style="width:65%">Path Berkas</th>
+                <th style="width:15%">Ukuran</th>
+                <th style="width:20%;text-align:right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="fm-triage-runaway-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Panel 4: Safe Reclaim Catalog -->
+      <div id="fm-triage-panel-reclaim" style="display:none">
+        <div style="margin-bottom:14px;font-size:12px;color:var(--dim);line-height:1.5">
+          <strong>Katalog Safe Reclaim Terkurasi (ADR-0039):</strong> Pembersihan sampah sistem operasi yang terbukti aman, non-destruktif, dan dapat dijalankan tanpa mematikan layanan server.
+        </div>
+        <div id="fm-triage-reclaim-cards" style="display:flex;flex-direction:column;gap:12px"></div>
+      </div>
+    </div>
+
+    <!-- Footer Modal -->
+    <div style="padding:12px 20px;border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div style="font-size:12px;color:var(--dim)">
+        <span>Estimasi Ruang Dapat Dibebaskan:</span> <strong id="fm-triage-footer-reclaim" style="color:var(--green)">0 B</strong>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" onclick="fmCloseStorageTriage()">Tutup</button>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -2102,6 +2238,295 @@ async function fmSubmitBulkChmod(e) {
 }
 
 // ===========================================================================
+// STORAGE TRIAGE & SAFE RECLAIM (ADR-0039)
+// ===========================================================================
+let _fmTriageData = null;
+let _fmTriageActiveTab = 'hogs';
+
+function fmOpenStorageTriage(mountPath) {
+  const m = document.getElementById('fm-storage-triage-modal');
+  if (!m) return;
+  m.style.display = 'flex';
+  fmSwitchTriageTab('hogs');
+  fmFetchStorageTriage(mountPath || '/');
+}
+
+function fmCloseStorageTriage() {
+  const m = document.getElementById('fm-storage-triage-modal');
+  if (m) m.style.display = 'none';
+}
+
+function fmRefreshStorageTriage() {
+  const curMount = (_fmTriageData && _fmTriageData.mount_path) || '/';
+  fmFetchStorageTriage(curMount);
+}
+
+function fmSwitchTriageTab(tabId) {
+  _fmTriageActiveTab = tabId;
+  const tabs = ['hogs', 'ghosts', 'runaway', 'reclaim'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`fm-tab-btn-${t}`);
+    const panel = document.getElementById(`fm-triage-panel-${t}`);
+    if (t === tabId) {
+      if (btn) {
+        btn.className = 'btn btn-sm';
+        btn.style.background = 'var(--hover)';
+        btn.style.borderColor = 'var(--blue)';
+        btn.style.color = 'var(--blue)';
+      }
+      if (panel) panel.style.display = 'block';
+    } else {
+      if (btn) {
+        btn.className = 'btn btn-sm btn-ghost';
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+      }
+      if (panel) panel.style.display = 'none';
+    }
+  });
+}
+
+async function fmFetchStorageTriage(mountPath) {
+  const loading = document.getElementById('fm-triage-loading');
+  const refreshBtn = document.getElementById('fm-triage-refresh-btn');
+  if (loading) loading.style.display = 'flex';
+  if (refreshBtn) refreshBtn.disabled = true;
+
+  try {
+    const res = await fetch(`/api/servers/${SID}/files/storage-triage?mount=${encodeURIComponent(mountPath || '/')}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Gagal melakukan pemindaian storage triage');
+    }
+    const data = await res.json();
+    _fmTriageData = data;
+    fmRenderStorageTriage(data);
+  } catch (err) {
+    if (typeof showToast === 'function') {
+      showToast('Gagal memindai storage triage: ' + err.message, 'danger');
+    } else {
+      alert('Gagal memindai storage: ' + err.message);
+    }
+  } finally {
+    if (loading) loading.style.display = 'none';
+    if (refreshBtn) refreshBtn.disabled = false;
+  }
+}
+
+function fmRenderStorageTriage(data) {
+  if (!data) return;
+  const part = data.partition || {};
+  const mountBadge = document.getElementById('fm-triage-mount-badge');
+  const partInfo = document.getElementById('fm-triage-part-info');
+
+  if (mountBadge) mountBadge.textContent = `Partisi ${part.mount_point || '/'}`;
+  if (partInfo) {
+    partInfo.innerHTML = `Terpakai: <strong>${part.used_human || '0 B'}</strong> dari <strong>${part.total_human || '0 B'}</strong> (${part.used_percent || 0}%) &bull; Bebas: <strong style="color:var(--green)">${part.free_human || '0 B'}</strong>`;
+  }
+
+  // Update Counters
+  const countHogs = document.getElementById('fm-triage-count-hogs');
+  const countGhosts = document.getElementById('fm-triage-count-ghosts');
+  const countRunaway = document.getElementById('fm-triage-count-runaway');
+  const countReclaim = document.getElementById('fm-triage-count-reclaim');
+  const footerReclaim = document.getElementById('fm-triage-footer-reclaim');
+
+  const hogs = data.space_hogs || [];
+  const ghosts = data.ghost_files || [];
+  const runaway = data.runaway_files || [];
+  const reclaim = data.reclaimables || [];
+
+  if (countHogs) countHogs.textContent = hogs.length;
+  if (countGhosts) countGhosts.textContent = ghosts.length;
+  if (countRunaway) countRunaway.textContent = runaway.length;
+  if (countReclaim) countReclaim.textContent = data.total_reclaim_human || '0 B';
+  if (footerReclaim) footerReclaim.textContent = data.total_reclaim_human || '0 B';
+
+  // 1. Render Space Hogs
+  const hogsTbody = document.getElementById('fm-triage-hogs-tbody');
+  if (hogsTbody) {
+    if (hogs.length === 0) {
+      hogsTbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--dim)">Tidak ada direktori berukuran signifikan terdeteksi.</td></tr>`;
+    } else {
+      const maxHogBytes = hogs[0].size_bytes || 1;
+      hogsTbody.innerHTML = hogs.map(h => {
+        const pct = Math.max(2, Math.round((h.size_bytes / maxHogBytes) * 100));
+        return `<tr class="fm-row">
+          <td style="font-family:monospace;font-size:12px;color:var(--text)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span>📁</span>
+              <span class="mono" style="word-break:break-all">${_esc(h.path)}</span>
+            </div>
+            <div style="height:4px;width:100%;background:rgba(255,255,255,0.06);border-radius:2px;margin-top:6px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:var(--blue);border-radius:2px"></div>
+            </div>
+          </td>
+          <td style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap">${_esc(h.human_size)}</td>
+          <td style="white-space:nowrap">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="fmCloseStorageTriage(); fmNavigateTo('${h.path.replace(/'/g, "\\'")}');" style="font-size:11px;padding:3px 8px">
+              📂 Buka di File Manager
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  // 2. Render Ghost Files
+  const ghostsTbody = document.getElementById('fm-triage-ghosts-tbody');
+  if (ghostsTbody) {
+    if (ghosts.length === 0) {
+      ghostsTbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--dim)">✓ Bersih: Tidak ada ghost files (unlinked open file descriptors) yang menahan disk.</td></tr>`;
+    } else {
+      ghostsTbody.innerHTML = ghosts.map(g => {
+        return `<tr class="fm-row">
+          <td>
+            <div style="font-weight:600;color:var(--text)">${_esc(g.command)}</div>
+            <div class="mono" style="font-size:11px;color:var(--dim)">PID: ${_esc(g.pid)}</div>
+          </td>
+          <td style="font-family:monospace;font-size:11.5px;color:#f87171;word-break:break-all">
+            ${_esc(g.path)} <span class="badge badge-danger" style="font-size:10px">DELETED</span>
+          </td>
+          <td style="font-size:12px;font-weight:600;color:#f87171;white-space:nowrap">${_esc(g.human_size)}</td>
+          <td style="white-space:nowrap">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="fmOpenTerminalAtCurrentPath();" style="font-size:11px;padding:3px 8px" title="Buka terminal untuk reload / restart proses">
+              🖥 Terminal
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  // 3. Render Runaway Files
+  const runawayTbody = document.getElementById('fm-triage-runaway-tbody');
+  if (runawayTbody) {
+    if (runaway.length === 0) {
+      runawayTbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--dim)">✓ Tidak ada lonjakan file log aktif (&ge; 15 MB dalam 60 menit) terdeteksi.</td></tr>`;
+    } else {
+      runawayTbody.innerHTML = runaway.map(r => {
+        return `<tr class="fm-row">
+          <td style="font-family:monospace;font-size:12px;color:var(--text);word-break:break-all">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span>📄</span>
+              <span class="mono">${_esc(r.path)}</span>
+            </div>
+          </td>
+          <td style="font-size:12px;font-weight:600;color:var(--yellow);white-space:nowrap">${_esc(r.human_size)}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <button type="button" class="btn btn-danger btn-sm" onclick="fmTruncateLogFile('${r.path.replace(/'/g, "\\'")}', '${r.human_size}')" style="font-size:11px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Truncate to 0B</span>
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  // 4. Render Safe Reclaim Cards
+  const reclaimCards = document.getElementById('fm-triage-reclaim-cards');
+  if (reclaimCards) {
+    if (reclaim.length === 0) {
+      reclaimCards.innerHTML = `<div style="text-align:center;padding:24px;color:var(--dim)">Katalog safe reclaim tidak menemukan sisa cache yang dapat dibebaskan.</div>`;
+    } else {
+      reclaimCards.innerHTML = reclaim.map(item => {
+        return `<div class="card" style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:260px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <strong style="font-size:13.5px;color:var(--text)">${_esc(item.name)}</strong>
+              <span class="badge badge-warn">${_esc(item.human_size)}</span>
+            </div>
+            <div style="font-size:12px;color:var(--dim);line-height:1.4">${_esc(item.description)}</div>
+            <div class="mono" style="font-size:11px;color:var(--dim);margin-top:4px"><code>${_esc(item.command)}</code></div>
+          </div>
+          <div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="fmExecuteStorageReclaim('${item.key}', '${item.name.replace(/'/g, "\\'")}')" style="display:inline-flex;align-items:center;gap:6px;font-size:12px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Bersihkan Sekarang</span>
+            </button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+}
+
+async function fmTruncateLogFile(path, sizeHuman) {
+  const confirmMsg = `Kosongkan berkas log aktif "${path}" (${sizeHuman}) menjadi 0 byte secara in-place?\n\nFile descriptor aplikasi akan tetap tersambung tanpa perlu restart service.`;
+  const confirmed = typeof showConfirmModal === 'function'
+    ? await showConfirmModal(confirmMsg, { danger: true, confirmText: 'Kosongkan (Truncate 0B)' })
+    : confirm(confirmMsg);
+
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/servers/${SID}/files/truncate-log`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': getCsrfToken(),
+      },
+      body: JSON.stringify({ path: path })
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(result.detail || 'Gagal mengosongkan berkas log');
+    }
+    if (typeof showToast === 'function') {
+      showToast(`Berkas "${path}" berhasil dikosongkan ke 0 byte!`, 'success');
+    } else {
+      alert(`Berkas "${path}" berhasil dikosongkan ke 0 byte!`);
+    }
+    fmRefreshStorageTriage();
+  } catch (err) {
+    if (typeof showToast === 'function') {
+      showToast(err.message, 'danger');
+    } else {
+      alert(err.message);
+    }
+  }
+}
+
+async function fmExecuteStorageReclaim(targetKey, targetName) {
+  const confirmMsg = `Jalankan pembersihan terkurasi untuk "${targetName}"?\n\nTindakan ini aman dan tidak akan merusak data persisten atau database.`;
+  const confirmed = typeof showConfirmModal === 'function'
+    ? await showConfirmModal(confirmMsg, { danger: false, confirmText: 'Jalankan Pembersihan' })
+    : confirm(confirmMsg);
+
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/servers/${SID}/files/storage-reclaim`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': getCsrfToken(),
+      },
+      body: JSON.stringify({ target: targetKey })
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(result.detail || 'Gagal menjalankan pembersihan');
+    }
+    const msg = result.output || 'Pembersihan berhasil dijalankan';
+    if (typeof showToast === 'function') {
+      showToast(msg, 'success');
+    } else {
+      alert(msg);
+    }
+    fmRefreshStorageTriage();
+  } catch (err) {
+    if (typeof showToast === 'function') {
+      showToast(err.message, 'danger');
+    } else {
+      alert(err.message);
+    }
+  }
+}
+
+// ===========================================================================
 // PINTASAN KEYBOARD GLOBAL FILE MANAGER
 // ===========================================================================
 document.addEventListener('keydown', (e) => {
@@ -2122,6 +2547,7 @@ document.addEventListener('keydown', (e) => {
         if (m.id === 'fm-prompt-modal') { fmClosePrompt(); return; }
         if (m.id === 'fm-bulk-delete-modal') { fmCloseBulkDelete(); return; }
         if (m.id === 'fm-bulk-chmod-modal') { fmCloseBulkChmod(); return; }
+        if (m.id === 'fm-storage-triage-modal') { fmCloseStorageTriage(); return; }
         m.style.display = 'none';
         return;
       }
@@ -2189,6 +2615,7 @@ document.addEventListener('click', (e) => {
     if (e.target.id === 'fm-prompt-modal') { fmClosePrompt(); return; }
     if (e.target.id === 'fm-bulk-delete-modal') { fmCloseBulkDelete(); return; }
     if (e.target.id === 'fm-bulk-chmod-modal') { fmCloseBulkChmod(); return; }
+    if (e.target.id === 'fm-storage-triage-modal') { fmCloseStorageTriage(); return; }
     e.target.style.display = 'none';
   }
 });

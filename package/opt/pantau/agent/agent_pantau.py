@@ -489,7 +489,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.21"
+AGENT_VERSION = "4.11.22"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -613,6 +613,7 @@ def send_report(cfg: dict, services: list, system: dict,
     if packages_changed:
         payload["packages_changed"] = True
     payload["security"] = collect_security()
+    payload["failed_excerpts"] = collect_failed_units_excerpts()
     payload["cron_jobs"] = collect_cron_jobs()
     payload["firewall"] = collect_firewall()
     payload["listening_ports"] = collect_listening_ports()
@@ -3451,6 +3452,49 @@ def collect_accounts() -> list[dict]:
                 "is_locked": False,
             })
     return accounts[:250]
+
+
+def collect_failed_units_excerpts() -> dict[str, str]:
+    """Kumpulkan cuplikan log kegagalan layanan (Root Cause Excerpt) dari journalctl untuk unit yang failed."""
+    excerpts = {}
+    try:
+        res = _run_cmd(
+            ["systemctl", "--failed", "--type=service", "--no-pager", "--no-legend", "--plain"],
+            timeout=5,
+        )
+        if res and res.returncode == 0 and res.stdout:
+            lines = res.stdout.strip().splitlines()
+            for ln in lines:
+                parts = ln.split()
+                if not parts:
+                    continue
+                unit = parts[0]
+                if unit.startswith("●"):
+                    parts = parts[1:]
+                    if not parts:
+                        continue
+                    unit = parts[0]
+                if not unit.endswith(".service"):
+                    continue
+                unit_name = unit[:-8]
+                if len(excerpts) >= 5:
+                    break
+                j_res = _run_cmd(
+                    ["journalctl", "-u", unit, "-n", "12", "--no-pager", "--output=cat"],
+                    timeout=3,
+                )
+                if j_res and j_res.stdout and j_res.stdout.strip():
+                    excerpts[unit_name] = j_res.stdout.strip()[:2000]
+                else:
+                    st_res = _run_cmd(
+                        ["systemctl", "status", unit, "-n", "8", "--no-pager"],
+                        timeout=3,
+                    )
+                    if st_res and st_res.stdout:
+                        excerpts[unit_name] = st_res.stdout.strip()[:2000]
+    except Exception as e:
+        _log_debug(f"Gagal collect_failed_units_excerpts: {e}")
+    return excerpts
 
 
 def collect_units() -> list[str]:
@@ -8025,6 +8069,8 @@ import tempfile
 import pwd
 import grp
 import hashlib
+import subprocess
+import re
 from pathlib import Path
 
 # Direktori dan berkas kritis yang mutlak dilarang dimanipulasi/dihapus
@@ -8828,6 +8874,358 @@ def action_batch_chmod(paths: list[str], mode: str) -> None:
     ok_exit({"updated": updated, "mode": mode, "count": len(updated)})
 
 
+def _fmt_bytes(b: int) -> str:
+    if b <= 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    v = float(b)
+    for u in units:
+        if v < 1024.0 or u == "TB":
+            return f"{v:.1f} {u}" if u != "B" else f"{int(v)} B"
+        v /= 1024.0
+    return f"{b} B"
+
+
+def action_storage_triage(mount_path: str = "/") -> None:
+    if not mount_path:
+        mount_path = "/"
+    abs_mount = os.path.abspath(mount_path)
+    if not os.path.exists(abs_mount):
+        err_exit(f"Mount path '{mount_path}' tidak ditemukan")
+
+    # 1. Informasi Partisi
+    try:
+        usage = shutil.disk_usage(abs_mount)
+        total_b = usage.total
+        used_b = usage.used
+        free_b = usage.free
+        used_pct = round((used_b / total_b * 100.0), 1) if total_b > 0 else 0.0
+    except Exception:
+        total_b, used_b, free_b, used_pct = 0, 0, 0, 0.0
+
+    # 2. Level-1 Space Hogs
+    space_hogs = []
+    scan_targets = []
+    if abs_mount == "/":
+        for d in ["/var", "/tmp", "/opt", "/data", "/root", "/home", "/boot", "/etc", "/srv", "/usr"]:
+            if os.path.isdir(d):
+                scan_targets.append(d)
+    else:
+        try:
+            with os.scandir(abs_mount) as it:
+                for entry in it:
+                    if entry.is_dir(follow_symlinks=False):
+                        scan_targets.append(entry.path)
+        except Exception:
+            scan_targets = [abs_mount]
+
+    for d in scan_targets:
+        try:
+            du_p = subprocess.run(
+                ["du", "-skx", d],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if du_p.returncode == 0 and du_p.stdout:
+                line = du_p.stdout.strip().splitlines()[0]
+                parts = line.split(maxsplit=1)
+                if parts and parts[0].isdigit():
+                    sz_bytes = int(parts[0]) * 1024
+                    space_hogs.append({
+                        "path": d,
+                        "size_bytes": sz_bytes,
+                        "human_size": _fmt_bytes(sz_bytes),
+                    })
+        except Exception:
+            pass
+
+    space_hogs.sort(key=lambda x: x["size_bytes"], reverse=True)
+    space_hogs = space_hogs[:12]
+
+    # 3. Top Runaway Files (dimodifikasi dalam 60 menit terakhir, >= 15MB, non-database)
+    runaway_files = []
+    runaway_search_dirs = [d for d in ["/var", "/tmp", "/opt", "/data", "/root", "/home"] if os.path.isdir(d)]
+    if runaway_search_dirs:
+        find_cmd = [
+            "find", *runaway_search_dirs, "-xdev",
+            "(",
+            "-path", "*/proc", "-o", "-path", "*/sys", "-o", "-path", "*/dev", "-o",
+            "-path", "*/run", "-o", "-path", "*/mysql", "-o", "-path", "*/mariadb", "-o",
+            "-path", "*/postgresql", "-o", "-path", "*/postgres", "-o", "-path", "*/redis", "-o",
+            "-path", "*/mongodb", "-o", "-path", "*/docker/volumes", "-o",
+            "-path", "*/docker/overlay2", "-o", "-path", "*/containerd", "-o",
+            "-path", "*/.git", "-o", "-path", "*/.cache",
+            ")", "-prune", "-o",
+            "-type", "f", "-mmin", "-60", "-size", "+15M",
+            "(",
+            "-name", "*.log", "-o", "-name", "*.log.*", "-o", "-name", "*.txt", "-o",
+            "-name", "*.out", "-o", "-name", "*.err", "-o", "-name", "*.dump", "-o",
+            "-path", "/var/log/*", "-o", "-path", "/tmp/*", "-o", "-path", "/var/tmp/*",
+            ")",
+            "!", "-name", "*.ibd", "!", "-name", "*.frm", "!", "-name", "*.myd", "!", "-name", "*.myi",
+            "!", "-name", "*.db", "!", "-name", "*.sqlite*", "!", "-name", "*.rdb", "!", "-name", "*.wal",
+            "!", "-name", "*.qcow2", "!", "-name", "*.vmdk", "!", "-name", "*.img",
+            "!", "-name", "galera.cache", "!", "-name", "grastate.dat",
+            "-printf", "%s\t%p\n"
+        ]
+        try:
+            rf_proc = subprocess.run(find_cmd, capture_output=True, text=True, timeout=8)
+            if rf_proc.returncode == 0 and rf_proc.stdout:
+                for ln in rf_proc.stdout.strip().splitlines():
+                    pts = ln.split("\t", 1)
+                    if len(pts) == 2 and pts[0].isdigit():
+                        sb = int(pts[0])
+                        p = pts[1].strip()
+                        runaway_files.append({
+                            "path": p,
+                            "size_bytes": sb,
+                            "human_size": _fmt_bytes(sb),
+                        })
+        except Exception:
+            pass
+    runaway_files.sort(key=lambda x: x["size_bytes"], reverse=True)
+    runaway_files = runaway_files[:10]
+
+    # 4. Ghost Files (Unlinked open file descriptors)
+    ghost_files = []
+    try:
+        proc_dirs = [p for p in os.listdir("/proc") if p.isdigit()]
+        for pid in proc_dirs:
+            fd_dir = f"/proc/{pid}/fd"
+            if not os.path.isdir(fd_dir):
+                continue
+            try:
+                for fd in os.listdir(fd_dir):
+                    fd_path = f"{fd_dir}/{fd}"
+                    try:
+                        tgt = os.readlink(fd_path)
+                        if tgt.endswith(" (deleted)"):
+                            clean_tgt = tgt[:-10]
+                            st = os.stat(fd_path)
+                            sz = st.st_size
+                            if sz >= 524288:  # >= 512 KB
+                                comm = pid
+                                try:
+                                    with open(f"/proc/{pid}/comm", "r", encoding="utf-8", errors="ignore") as f:
+                                        comm = f.read().strip()
+                                except Exception:
+                                    pass
+                                ghost_files.append({
+                                    "command": comm,
+                                    "pid": pid,
+                                    "path": clean_tgt,
+                                    "size_bytes": sz,
+                                    "human_size": _fmt_bytes(sz),
+                                })
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+    except Exception:
+        pass
+    ghost_files.sort(key=lambda x: x["size_bytes"], reverse=True)
+    ghost_files = ghost_files[:15]
+
+    # 5. Reclaimable Storage Catalog
+    reclaimables = []
+
+    # 5a. Systemd Journal Vacuum
+    journal_bytes = 0
+    journal_human = "0 B"
+    try:
+        j_p = subprocess.run(["journalctl", "--disk-usage"], capture_output=True, text=True, timeout=4)
+        if j_p.returncode == 0 and j_p.stdout:
+            m = re.search(r"take up\s+([0-9.]+)\s*([KMGTkmgt]?[Bb]?)", j_p.stdout)
+            if m:
+                val = float(m.group(1))
+                unit = m.group(2).upper()
+                mult = 1
+                if "K" in unit:
+                    mult = 1024
+                elif "M" in unit:
+                    mult = 1024 * 1024
+                elif "G" in unit:
+                    mult = 1024 * 1024 * 1024
+                elif "T" in unit:
+                    mult = 1024 * 1024 * 1024 * 1024
+                journal_bytes = int(val * mult)
+                journal_human = _fmt_bytes(journal_bytes)
+    except Exception:
+        pass
+
+    if journal_bytes > 0:
+        reclaimables.append({
+            "key": "journal",
+            "name": "Systemd Journal Logs",
+            "description": "Log runtime systemd yang diarsip. Dapat dipangkas hingga batas 200MB dengan aman.",
+            "estimated_bytes": max(0, journal_bytes - (200 * 1024 * 1024)),
+            "human_size": journal_human,
+            "command": "journalctl --vacuum-size=200M",
+            "available": True,
+        })
+
+    # 5b. Package Manager Cache (APT)
+    apt_bytes = 0
+    if os.path.isdir("/var/cache/apt/archives"):
+        try:
+            for fn in os.listdir("/var/cache/apt/archives"):
+                if fn.endswith(".deb"):
+                    fp = os.path.join("/var/cache/apt/archives", fn)
+                    try:
+                        apt_bytes += os.stat(fp).st_size
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    if apt_bytes > 0:
+        reclaimables.append({
+            "key": "apt_cache",
+            "name": "APT Package Cache",
+            "description": "Berkas installer .deb sisa unduhan instalasi/pembaruan paket OS.",
+            "estimated_bytes": apt_bytes,
+            "human_size": _fmt_bytes(apt_bytes),
+            "command": "apt-get clean",
+            "available": True,
+        })
+
+    # 5c. Rotated Logs Archive (*.gz, *.[0-9].gz, *.[0-9])
+    rotated_bytes = 0
+    if os.path.isdir("/var/log"):
+        try:
+            for root, _, files in os.walk("/var/log"):
+                for fn in files:
+                    if fn.endswith(".gz") or re.search(r"\.[0-9]+(\.gz)?$", fn):
+                        fp = os.path.join(root, fn)
+                        try:
+                            rotated_bytes += os.stat(fp).st_size
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    if rotated_bytes > 0:
+        reclaimables.append({
+            "key": "rotated_logs",
+            "name": "Arsip Rotasi Log Usang",
+            "description": "Berkas log lawas yang telah dikompresi (.gz / .1) di /var/log.",
+            "estimated_bytes": rotated_bytes,
+            "human_size": _fmt_bytes(rotated_bytes),
+            "command": "find /var/log -type f ( -name '*.gz' -o -name '*.[0-9].gz' -o -name '*.[0-9]' ) -delete",
+            "available": True,
+        })
+
+    total_reclaim_b = sum(r["estimated_bytes"] for r in reclaimables)
+
+    ok_exit({
+        "mount_path": abs_mount,
+        "partition": {
+            "mount_point": abs_mount,
+            "total_bytes": total_b,
+            "used_bytes": used_b,
+            "free_bytes": free_b,
+            "used_percent": used_pct,
+            "total_human": _fmt_bytes(total_b),
+            "used_human": _fmt_bytes(used_b),
+            "free_human": _fmt_bytes(free_b),
+        },
+        "space_hogs": space_hogs,
+        "runaway_files": runaway_files,
+        "ghost_files": ghost_files,
+        "reclaimables": reclaimables,
+        "total_reclaim_bytes": total_reclaim_b,
+        "total_reclaim_human": _fmt_bytes(total_reclaim_b),
+    })
+
+
+def action_truncate_log(path: str) -> None:
+    if not path:
+        err_exit("Path file harus ditentukan")
+    abs_p = os.path.abspath(path)
+
+    # Validasi keamanan sistem
+    check_path_protection(abs_p, for_write=True)
+    if not os.path.exists(abs_p):
+        err_exit(f"Berkas '{path}' tidak ditemukan")
+    if not os.path.isfile(abs_p):
+        err_exit(f"Target '{path}' bukan sebuah berkas reguler (dilarang truncate direktori/device)")
+
+    # Tolak berkas database & binari penting
+    lower_p = abs_p.lower()
+    db_exts = [
+        ".ibd", ".frm", ".myd", ".myi", ".db", ".sqlite", ".sqlite3",
+        ".rdb", ".aof", ".wal", ".mdf", ".ldf", ".ndf", ".edb", ".dit",
+        ".qcow2", ".vmdk", ".img", ".raw", ".vhd", ".vhdx",
+        ".so", ".bin", ".py", ".sh", ".conf", ".ini", ".yaml", ".yml", ".json",
+        ".passwd", ".shadow"
+    ]
+    for ext in db_exts:
+        if lower_p.endswith(ext):
+            err_exit(f"Aksi ditolak: Berkas '{path}' memiliki ekstensi terproteksi ({ext}) dan tidak boleh di-truncate")
+
+    for db_dir in ["/mysql/", "/mariadb/", "/postgresql/", "/postgres/", "/redis/", "/mongodb/", "/docker/volumes/"]:
+        if db_dir in lower_p:
+            err_exit(f"Aksi ditolak: Berkas '{path}' berada di dalam direktori penyimpanan database")
+
+    try:
+        prev_size = os.stat(abs_p).st_size
+        with open(abs_p, "r+", encoding="utf-8", errors="ignore") as f:
+            f.truncate(0)
+        ok_exit({
+            "path": abs_p,
+            "truncated": True,
+            "freed_bytes": prev_size,
+            "freed_human": _fmt_bytes(prev_size),
+        })
+    except Exception as e:
+        err_exit(f"Gagal mengosongkan berkas log '{path}': {e}")
+
+
+def action_storage_reclaim(target: str) -> None:
+    if not target:
+        err_exit("Target reclaim harus ditentukan")
+
+    if target == "journal":
+        try:
+            p = subprocess.run(["journalctl", "--vacuum-size=200M"], capture_output=True, text=True, timeout=20)
+            out = p.stdout.strip() or p.stderr.strip() or "Vacuum journalctl berhasil."
+            ok_exit({"target": target, "success": True, "output": out})
+        except Exception as e:
+            err_exit(f"Gagal vacuum journal: {e}")
+
+    elif target == "apt_cache":
+        try:
+            p = subprocess.run(["apt-get", "clean"], capture_output=True, text=True, timeout=20)
+            out = p.stdout.strip() or p.stderr.strip() or "Cache APT berhasil dibersihkan (apt-get clean)."
+            ok_exit({"target": target, "success": True, "output": out})
+        except Exception as e:
+            err_exit(f"Gagal membersihkan cache APT: {e}")
+
+    elif target == "rotated_logs":
+        try:
+            freed_bytes = 0
+            removed_count = 0
+            for root, _, files in os.walk("/var/log"):
+                for fn in files:
+                    if fn.endswith(".gz") or re.search(r"\.[0-9]+(\.gz)?$", fn):
+                        fp = os.path.join(root, fn)
+                        try:
+                            st = os.stat(fp)
+                            freed_bytes += st.st_size
+                            os.remove(fp)
+                            removed_count += 1
+                        except Exception:
+                            pass
+            out = f"Berhasil menghapus {removed_count} berkas arsip log lama, membebaskan {_fmt_bytes(freed_bytes)} ruang disk."
+            ok_exit({"target": target, "success": True, "output": out, "freed_bytes": freed_bytes})
+        except Exception as e:
+            err_exit(f"Gagal menghapus arsip log: {e}")
+
+    else:
+        err_exit(f"Target reclaim tidak dikenal: '{target}'")
+
+
 def main():
     payload = None
     if not sys.stdin.isatty():
@@ -8902,6 +9300,12 @@ def main():
         action_batch_rm(params.get("paths", []))
     elif action == "batch_chmod":
         action_batch_chmod(params.get("paths", []), params.get("mode", "0644"))
+    elif action == "storage_triage":
+        action_storage_triage(params.get("mount_path", params.get("mount", "/")))
+    elif action == "truncate_log":
+        action_truncate_log(params.get("path", ""))
+    elif action == "storage_reclaim":
+        action_storage_reclaim(params.get("target", ""))
     else:
         err_exit(f"Aksi tidak dikenal: '{action}'")
 
@@ -8911,7 +9315,7 @@ if __name__ == "__main__":
 
 
 def ensure_pantau_file_updated(force: bool = False) -> bool:
-    """Memastikan wrapper /usr/local/sbin/pantau-file mendukung pewarisan kepemilikan parent dir, single clean backup, dan proteksi otentikasi SSH.
+    """Memastikan wrapper /usr/local/sbin/pantau-file mendukung pewarisan kepemilikan parent dir, single clean backup, proteksi otentikasi SSH, dan Storage Triage forensics.
     Jika berkas belum ada, versi usang, atau force=True, otomatis perbarui via root langsung atau sudo pantau-file.
     """
     try:
@@ -8922,7 +9326,7 @@ def ensure_pantau_file_updated(force: bool = False) -> bool:
                     cur_content = f.read()
             except Exception:
                 pass
-            if "def get_parent_ownership" in cur_content and "otentikasi SSH" in cur_content and "ts_backup =" not in cur_content:
+            if "def action_storage_triage" in cur_content and "def get_parent_ownership" in cur_content and "action_truncate_log" in cur_content:
                 return True
 
         content_to_write = PANTAU_FILE_SCRIPT_BODY.strip() + "\n"

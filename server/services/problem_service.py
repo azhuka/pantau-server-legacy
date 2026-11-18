@@ -250,6 +250,7 @@ def _build_problem_context(key: str, srv, **kwargs) -> str | None:
                     f"Restart service: sudo systemctl restart {svc_name}"
                 ]
 
+            root_cause_excerpt = kwargs.get("root_cause_excerpt")
             return json.dumps({
                 "diagnosa": diagnosa,
                 "diagnosa_en": diagnosa_en,
@@ -257,6 +258,7 @@ def _build_problem_context(key: str, srv, **kwargs) -> str | None:
                 "penyebab_en": penyebab_en,
                 "dampak": dampak,
                 "dampak_en": dampak_en,
+                "root_cause_excerpt": root_cause_excerpt,
                 "data_teknis": {
                     "service_name": svc_name,
                     "port": port,
@@ -268,6 +270,7 @@ def _build_problem_context(key: str, srv, **kwargs) -> str | None:
                     "is_operator_stopped": is_op_stop,
                     "operator_stopped_by": op_by if is_op_stop else None,
                     "operator_stopped_dependencies": op_deps if op_deps else None,
+                    "root_cause_excerpt": root_cause_excerpt,
                     "waktu_kejadian": now_str,
                 },
                 "rekomendasi": rekomendasi,
@@ -1214,7 +1217,7 @@ def _is_admin_service(name: str, port: int | None = None, proc: str | None = Non
     return False
 
 
-def _problem_instances(srv, extras, svc_data, db=None) -> list:
+def _problem_instances(srv, extras, svc_data, db=None, failed_excerpts=None) -> list:
     """Masalah yang sedang terjadi -> [{key,severity,message,tip,context}] (Zabbix-like)."""
     inst: list = []
 
@@ -1746,6 +1749,14 @@ def _problem_instances(srv, extras, svc_data, db=None) -> list:
                         svc_msg = f"Service {name} Down"
                         svc_tip = SVC_DOWN_TIP.format(name=name)
 
+            root_cause_exc = (
+                d.get("failed_excerpt")
+                or (failed_excerpts.get(name_lower) if isinstance(failed_excerpts, dict) else None)
+                or (failed_excerpts.get(name) if isinstance(failed_excerpts, dict) else None)
+                or (failed_excerpts.get(name_lower + ".service") if isinstance(failed_excerpts, dict) else None)
+                or (failed_excerpts.get(name + ".service") if isinstance(failed_excerpts, dict) else None)
+            )
+
             inst.append({
                 "key": f"service_down:{name}", "severity": svc_sev,
                 "message": svc_msg,
@@ -1760,6 +1771,7 @@ def _problem_instances(srv, extras, svc_data, db=None) -> list:
                     oom_killed=bool(oom_info),
                     oom_proc=oom_info.get("proc") if oom_info else None,
                     oom_time=oom_info.get("time") if oom_info else None,
+                    root_cause_excerpt=root_cause_exc,
                 ),
             })
         elif st == "unknown":

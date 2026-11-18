@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token }}">
 <title>{% block title %}Pantau Server{% endblock %}</title>
-<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.21' }}">
+<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.22' }}">
 <style id="noc-act-dropdown-anti-cache">
   /* Override Mutlak Anti-Cache untuk Tombol Dropdown Tindakan yang Non-Aktif (Disabled) */
   .noc-act-dropdown-item:disabled,
@@ -3068,7 +3068,7 @@ body.show-alert-banner .main{padding-top:72px}
   </nav>
   <div class="sidebar-footer">
     <div class="sb-footer-brand">Pantau Server</div>
-    <div class="sb-footer-ver">v{{ app_version or '4.11.21' }}</div>
+    <div class="sb-footer-ver">v{{ app_version or '4.11.22' }}</div>
     <div class="sb-clock-card" id="sbClockBox" 
          data-server-tz="{{ server_tz or 'WITA' }}" 
          data-server-offset="{{ server_tz_offset if server_tz_offset is defined else 480 }}"
@@ -4752,6 +4752,7 @@ function dismissActiveModal(targetModal) {
     { id: 'fm-prompt-modal', fn: () => typeof fmClosePrompt === 'function' && (fmClosePrompt(), true) },
     { id: 'fm-bulk-delete-modal', fn: () => typeof fmCloseBulkDelete === 'function' && (fmCloseBulkDelete(), true) },
     { id: 'fm-bulk-chmod-modal', fn: () => typeof fmCloseBulkChmod === 'function' && (fmCloseBulkChmod(), true) },
+    { id: 'fm-storage-triage-modal', fn: () => typeof fmCloseStorageTriage === 'function' && (fmCloseStorageTriage(), true) },
   ];
 
   if (targetModal) {
@@ -5152,6 +5153,25 @@ function renderProblemDetailModal(p) {
     } else {
       impactEl.parentElement.style.display = 'none';
     }
+  }
+
+  // 3b. Cuplikan Log Kegagalan (Root Cause Excerpt)
+  const excerptContainer = document.getElementById('pdm-sec-excerpt-container');
+  const excerptTitle = document.getElementById('pdm-sec-excerpt-title');
+  const excerptPre = document.getElementById('pdm-excerpt-pre');
+  const excerptCopyBtn = document.getElementById('pdm-excerpt-copy-btn');
+  const rawExcerpt = ctx.root_cause_excerpt || (ctx.data_teknis && ctx.data_teknis.root_cause_excerpt) || '';
+
+  if (rawExcerpt && String(rawExcerpt).trim()) {
+    if (excerptContainer) excerptContainer.style.display = 'block';
+    if (excerptTitle) excerptTitle.textContent = isEn ? 'Failure Log Excerpt (Root Cause)' : 'Cuplikan Log Kegagalan (Root Cause Excerpt)';
+    if (excerptPre) excerptPre.textContent = String(rawExcerpt).trim();
+    if (excerptCopyBtn) {
+      excerptCopyBtn.textContent = isEn ? 'Copy Log' : 'Salin Log';
+      excerptCopyBtn.onclick = function() { copyCommandText(this, String(rawExcerpt).trim()); };
+    }
+  } else {
+    if (excerptContainer) excerptContainer.style.display = 'none';
   }
 
   // 4. Data Teknis / Snapshot
@@ -5684,6 +5704,18 @@ document.addEventListener('keydown', (e) => {
         <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:12.5px;color:var(--dim)">
           <strong style="color:var(--text)" id="pdm-lbl-impact">Dampak:</strong> <span id="pdm-impact-text"></span>
         </div>
+      </div>
+
+      <!-- Cuplikan Log Kegagalan (Root Cause Excerpt) -->
+      <div id="pdm-sec-excerpt-container" style="display:none;background:var(--input-bg, #0d1117);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:14px 16px">
+        <div style="font-size:12px;font-weight:600;color:#fca5a5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:#ef4444"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <span id="pdm-sec-excerpt-title">Cuplikan Log Kegagalan (Root Cause Excerpt)</span>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="pdm-excerpt-copy-btn" style="font-size:11px;padding:2px 8px;height:auto">Salin Log</button>
+        </div>
+        <pre id="pdm-excerpt-pre" class="mono" style="background:#05070a;color:#fca5a5;padding:10px 12px;border-radius:6px;border:1px solid #30363d;font-size:12px;max-height:180px;overflow-y:auto;white-space:pre-wrap;margin:0;line-height:1.45;"></pre>
       </div>
 
       <!-- Data Teknis Telemetri -->

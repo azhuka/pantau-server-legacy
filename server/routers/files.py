@@ -718,6 +718,86 @@ async def api_server_files_batch_chmod(
     return res
 
 
+@router.get("/api/servers/{sid}/files/storage-triage")
+async def api_server_files_storage_triage(
+    sid: int,
+    mount: str = "/",
+    user: User = Depends(require_file_manager),
+    db: Session = Depends(get_db),
+):
+    """Diagnostik Storage Triage on-demand untuk mendeteksi space hogs, ghost files, runaway files, dan safe reclaim."""
+    server = _get_active_online_server(db, sid, user=user)
+    mount_clean = str(mount or "/").strip()
+    res = await file_dispatcher.dispatch(sid, "storage_triage", {"mount_path": mount_clean}, timeout=40.0)
+    if not res.get("ok"):
+        raise HTTPException(status_code=500, detail=res.get("error", "Gagal melakukan pemindaian storage triage"))
+    return res
+
+
+@router.post("/api/servers/{sid}/files/truncate-log")
+async def api_server_files_truncate_log(
+    sid: int,
+    request: Request,
+    body: dict = Body(...),
+    user: User = Depends(require_file_manager),
+    db: Session = Depends(get_db),
+):
+    """Mengosongkan berkas log aktif secara in-place (0 byte) tanpa memutus file descriptor proses."""
+    _verify_csrf_header(request)
+    server = _get_active_online_server(db, sid, user=user)
+    path = str(body.get("path") or "").strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="Path berkas log harus ditentukan")
+
+    res = await file_dispatcher.dispatch(sid, "truncate_log", {"path": path}, timeout=15.0)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Gagal mengosongkan berkas log"))
+
+    freed = res.get("freed_human", "0 B")
+    _audit(
+        db,
+        user.username,
+        "file_truncate_log",
+        f"{server.hostname}: {path} ({freed} dibebaskan)",
+        "berhasil",
+        server_id=sid,
+    )
+    db.commit()
+    return res
+
+
+@router.post("/api/servers/{sid}/files/storage-reclaim")
+async def api_server_files_storage_reclaim(
+    sid: int,
+    request: Request,
+    body: dict = Body(...),
+    user: User = Depends(require_file_manager),
+    db: Session = Depends(get_db),
+):
+    """Menjalankan katalog pembersihan aman terkurasi (journalctl vacuum, apt-get clean, rotated logs)."""
+    _verify_csrf_header(request)
+    server = _get_active_online_server(db, sid, user=user)
+    target = str(body.get("target") or "").strip()
+    if target not in ("journal", "apt_cache", "rotated_logs"):
+        raise HTTPException(status_code=400, detail="Target pembersihan tidak valid")
+
+    res = await file_dispatcher.dispatch(sid, "storage_reclaim", {"target": target}, timeout=30.0)
+    if not res.get("ok"):
+        raise HTTPException(status_code=500, detail=res.get("error", "Gagal menjalankan pembersihan penyimpanan"))
+
+    out_msg = res.get("output", "")
+    _audit(
+        db,
+        user.username,
+        "storage_reclaim",
+        f"{server.hostname}: target={target} ({out_msg})",
+        "berhasil",
+        server_id=sid,
+    )
+    db.commit()
+    return res
+
+
 # ---------------------------------------------------------------------------
 # AGENT FILE RPC POLLING & RESULT
 # ---------------------------------------------------------------------------

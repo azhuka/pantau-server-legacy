@@ -354,6 +354,11 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.22
+
+- Storage Triage Forensics & Safe Reclaim (ADR-0039): Level-1 space hogs, ghost files, runaway files, in-place log truncation, dan katalog safe reclaim terkurasi.\n- Root Cause Excerpt (ADR-0021): Cuplikan log journalctl otomatis untuk unit yang failed pada modal rincian insiden.
+
+
 ## Versi 4.11.21
 
 ### Fitur Baru & Keamanan Terminal

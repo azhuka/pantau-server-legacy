@@ -1115,6 +1115,7 @@ def agent_report(
     try:
         services = db.query(Service).filter(Service.server_id == server.id).all()
         latest_map = _latest_metrics(db, (s.id for s in services))
+        failed_excerpts = body.get("failed_excerpts") if isinstance(body.get("failed_excerpts"), dict) else {}
         svc_data = [
             {
                 "name": s.service_name,
@@ -1123,10 +1124,15 @@ def agent_report(
                 "proc": s.process_name,
                 "is_core": bool(getattr(s, "is_core", 1)),
                 "health_msg": latest_map[s.id].health_message if s.id in latest_map else None,
+                "failed_excerpt": (
+                    failed_excerpts.get(s.service_name)
+                    or (failed_excerpts.get(s.service_name.lower()) if s.service_name else None)
+                    or (failed_excerpts.get(s.service_name + ".service") if s.service_name else None)
+                ),
             }
             for s in services
         ]
-        sync_server_problems(db, server, _problem_instances(server, extras, svc_data, db))
+        sync_server_problems(db, server, _problem_instances(server, extras, svc_data, db, failed_excerpts=failed_excerpts))
     except Exception as exc:
         try:
             db.rollback()
