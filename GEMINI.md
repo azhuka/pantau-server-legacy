@@ -166,20 +166,19 @@ Sebelum asisten AI menyatakan pekerjaan selesai ke operator, wajib memverifikasi
 6. **Otomasi SemVer 7 Berkas:** Apakah versi SemVer dinaikkan sinkron di 7 berkas via skrip `sop_release.py`? (**Wajib: YA**).
 7. **Verifikasi Lapangan 100% Armada:** Apakah 100% server klien aktif telah diverifikasi nyata di basis data sudah melapor pada versi baru? (**Wajib: YA**).
 8. **Kesetaraan Otoritas Operator (RBAC Parity):** Apakah perlindungan integritas akun (larangan hapus diri sendiri & master-admin) serta kesetaraan wewenang operator penuh dipatuhi? (**Wajib: YA**).
-9. **Zero-Blindspot FIM:** Apakah pemantauan integritas bebas dari hardcoded aplikasi pihak ketiga dan menegakkan diferensiasi kebijakan atribut tanpa titik buta? (**Wajib: YA**).
+9. **Arsitektur Agnostik & Bebas Hardcode:** Apakah seluruh implementasi bebas dari hardcoding string/nama spesifik aplikasi pihak ketiga dan murni mengandalkan penemuan dinamis atau karakteristik fisik sistem? (**Wajib: YA**).
 
 ---
 
-## 12. Aturan Baku FIM & Pemantauan Integritas Tanpa Titik Buta (Zero-Blindspot FIM Architecture)
-- **Larangan Keras Hardcoding Pihak Ketiga pada Mesin Pemindai:**
-  - Dilarang keras men-hardcode nama direktori, berkas, atau pola spesifik aplikasi pihak ketiga (seperti `wflogs`, `ips.php`, `config-livewaf.php`, dll.) di dalam kode inti agen pemantau (`agent_pantau.py`).
-  - Seluruh pola toleransi berkas dinamis wajib dikelola secara universal berbasis karakteristik fisik objek berkas.
-- **Larangan Keras Pengecualian Buta (Anti-Blind Exclusion):**
-  - Dilarang keras mengecualikan direktori atau berkas yang dapat ditulisi (*writable* seperti log, cache, uploads, temp) secara total dari pemantauan. Folder-folder tersebut merupakan target utama penyusupan *webshell backdoor*.
-- **Penerapan Wajib Diferensiasi Kebijakan Atribut (Attribute-Specific Monitoring Policies):**
-  - Mesin pemantau FIM wajib memisahkan perlakuan pemeriksaan berdasarkan karakteristik target:
-    1. **Berkas Kode & Konfigurasi (Strict/Content Integrity):** Dipantau penuh menggunakan kalkulasi hash SHA-256, ukuran, hak akses (`chmod`), dan kepemilikan (`chown`). Setiap byte perubahan wajib memicu status anomali.
-    2. **Berkas Log Dinamis Terpercaya (Attribute-Only Integrity):** Ditoleransi pertambahan ukuran dan fluktuasi hash isi, TETAPI **wajib tetap diawasi 100%** untuk hak akses (`permissions`), kepemilikan (`owner:group`), larangan bit eksekusi (`+x`), serta deteksi penghapusan berkas (*DELETED* / anti-forensik penyerang).
-    3. **Direktori Volatil (Script Execution Guard):** Memantau penambahan berkas baru bertipe skrip/eksekusi (`.php`, `.sh`, `.py`, biner ELF) di dalam folder yang seharusnya murni data non-eksekusi.
-- **Anti-Alert Fatigue & Larangan Menjadikan 'Abaikan' Sebagai Solusi:**
-  - Dilarang menjadikan fitur "Abaikan Insiden" manual oleh operator sebagai solusi operasional untuk menutupi kesalahan arsitektur deteksi data dinamis. Fitur pengabaian hanya sah untuk situasi transien (pemeliharaan sistem berjadwal).
+## 12. Arsitektur Agnostik & Larangan Mutlak Hardcoding Sistem (Universal Zero-Hardcode Standard)
+- **Larangan Keras Asumsi Statis & Hardcoding Pihak Ketiga:**
+  - Dilarang keras men-hardcode nama aplikasi, plugin, path berkas, nama layanan, atau pola vendor spesifik di dalam kode inti agen maupun server (seperti daftar statis path log, nama service pihak ketiga, atau pengecualian nama file).
+  - Sistem Pantau Server adalah platform NOC mandiri yang wajib beroperasi secara **universal dan agnostik** terhadap sembarang server Linux dan tumpukan aplikasi apa pun.
+- **Prinsip Penemuan Dinamis (*Dynamic Discovery over Static Guessing*):**
+  - Seluruh pengenalan objek sistem (layanan, port, proses, log, paket, sertifikat) wajib bersumber dari **inspeksi dinamis kondisi riil host**:
+    1. **Layanan & Port:** Dipetakan dari proses yang secara nyata sedang mendengarkan (*listening*) via `procfs`/socket kernel, bukan dari kamus port statis.
+    2. **Log & Telemetri:** Diperoleh dari unit `systemd` aktif atau berkas log yang terkonfigurasi pada runtime, bukan menebak lokasi path statis.
+    3. **Integritas Berkas & Keamanan:** Dievaluasi berbasis karakteristik atribut fisik objek (izin `chmod`, kepemilikan `chown`, tipe berkas, status eksekusi), bukan mencocokkan string nama file secara kaku.
+    4. **Manajemen Paket & OS:** Menggunakan probing manajer paket dan lingkungan runtime riil host secara agnostik.
+- **Audit & Eliminasi Hardcode Warisan:**
+  - Setiap kali menyentuh modul yang masih menyimpan jalan pintas hardcode lama, asisten AI wajib merefaktornya secara bertahap menuju arsitektur penemuan dinamis tanpa memecah kontrak data.

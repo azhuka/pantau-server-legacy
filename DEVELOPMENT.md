@@ -354,6 +354,15 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.16
+
+### v4.11.16 (2026-11-18)
+- **Pelacakan Dinamis Proses Pengguna:** Menambahkan ekstraksi dinamis proses sistem per akun (procs_count, primary_proc, procs) di collect_accounts() pada agent_pantau.py untuk akun reguler dan sistem.
+- **Eliminasi Kamus Statis Layanan-ke-Pengguna:** Menghapus known_service_users di _get_server_actions() pada server/services/server_service.py, digantikan pemetaan proses aktif langsung dari telemetri fisik accounts dan top_procs.
+- **Eliminasi Atribusi Palsu FIM:** Menghapus atribusi fiktif kejadian FIM berbasis pencocokan string path (/var/www -> www-data), menegakkan pemisahan domain murni antara integritas berkas dan audit tindakan pengguna.
+- **Penyelarasan Tampilan Tab Users & User Activity:** Memperbarui #acc-table di services.html dengan badge proses aktif untuk akun sistem, serta memperkaya cached_acts di servers.py agar proses layanan langsung muncul saat halaman aktivitas pengguna dibuka.
+
+
 ## Versi 4.11.15
 
 ### v4.11.15 (18 November 2026)

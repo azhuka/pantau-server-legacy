@@ -489,7 +489,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.15"
+AGENT_VERSION = "4.11.16"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -3320,6 +3320,37 @@ def collect_accounts() -> list[dict]:
     except Exception:
         entries = []
 
+    # Petakan proses aktif riil sistem per pengguna secara dinamis (/proc & ps)
+    procs_by_user: dict[str, list[dict]] = {}
+    try:
+        ps_res = _run_cmd(["ps", "-eo", "user:32,pid,stat,%cpu,%mem,comm,args", "--no-headers"], timeout=4)
+        if ps_res and ps_res.stdout:
+            for pline in ps_res.stdout.splitlines():
+                parts = pline.split(None, 6)
+                if len(parts) >= 6:
+                    p_u = parts[0]
+                    if p_u == "pantau":
+                        continue
+                    try:
+                        p_pid = int(parts[1])
+                        p_stat = parts[2]
+                        p_cpu = float(parts[3])
+                        p_mem = float(parts[4])
+                        p_comm = parts[5]
+                        p_args = parts[6] if len(parts) > 6 else p_comm
+                        procs_by_user.setdefault(p_u, []).append({
+                            "pid": p_pid,
+                            "stat": p_stat,
+                            "cpu": p_cpu,
+                            "mem": p_mem,
+                            "comm": p_comm,
+                            "args": p_args.strip(),
+                        })
+                    except (ValueError, IndexError):
+                        continue
+    except Exception:
+        pass
+
     for pw in entries:
         sessions = sessions_by_user.get(pw.pw_name, [])
         primary_grp_name = gid_to_name.get(pw.pw_gid, str(pw.pw_gid))
@@ -3329,6 +3360,13 @@ def collect_accounts() -> list[dict]:
         is_sudo = (pw.pw_uid == 0) or (primary_grp_name in privileged_groups) or bool(set(supp_groups) & privileged_groups)
         is_protected = is_system or (pw.pw_name in protected_set)
         is_locked = pw.pw_name in locked_set
+
+        user_procs = procs_by_user.get(pw.pw_name, [])
+        procs_count = len(user_procs)
+        primary_proc = ""
+        if user_procs:
+            sorted_p = sorted(user_procs, key=lambda p: (p["cpu"], p["mem"]), reverse=True)
+            primary_proc = sorted_p[0]["comm"]
 
         last_login_val = lastlog.get(pw.pw_name, "")
         if not last_login_val or "Never logged in" in last_login_val:
@@ -3352,6 +3390,8 @@ def collect_accounts() -> list[dict]:
                         _LAST_SEEN_USER_LOGIN[pw.pw_name] = last_login_val
                 except Exception:
                     pass
+            elif is_system and procs_count > 0:
+                last_login_val = f"{procs_count} proses aktif ({primary_proc})"
         elif last_login_val and "Never logged in" not in last_login_val:
             _LAST_SEEN_USER_LOGIN[pw.pw_name] = last_login_val
 
@@ -3365,6 +3405,19 @@ def collect_accounts() -> list[dict]:
             "shell": pw.pw_shell or "",
             "last_login": last_login_val,
             "sessions": sessions[:5],
+            "procs_count": procs_count,
+            "primary_proc": primary_proc,
+            "procs": [
+                {
+                    "pid": p["pid"],
+                    "comm": p["comm"],
+                    "stat": p["stat"],
+                    "cpu": p["cpu"],
+                    "mem": p["mem"],
+                    "args": p["args"][:120],
+                }
+                for p in user_procs[:5]
+            ],
             "is_system": is_system,
             "is_sudo": is_sudo,
             "is_protected": is_protected,
@@ -3374,7 +3427,8 @@ def collect_accounts() -> list[dict]:
     def _acc_sort_key(a):
         active_rank = 0 if a["user"] in sessions_by_user else 1
         type_rank = 0 if not a["is_system"] else 1
-        return (active_rank, type_rank, a["uid"])
+        proc_rank = 0 if a.get("procs_count", 0) > 0 else 1
+        return (active_rank, type_rank, proc_rank, a["uid"])
 
     accounts.sort(key=_acc_sort_key)
 

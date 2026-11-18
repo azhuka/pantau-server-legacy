@@ -3656,7 +3656,7 @@ div[style*="position: fixed"] .card {
         </thead>
         <tbody>
           {% for a in accounts %}
-          <tr data-user="{{ a.user|lower }}" data-is-system="{{ '1' if a.is_system else '0' }}" data-is-active="{{ '1' if (a.sessions and a.sessions|length > 0) else '0' }}">
+          <tr data-user="{{ a.user|lower }}" data-is-system="{{ '1' if a.is_system else '0' }}" data-is-active="{{ '1' if ((a.sessions and a.sessions|length > 0) or (a.procs_count and a.procs_count > 0)) else '0' }}" data-has-procs="{{ '1' if (a.procs_count and a.procs_count > 0) else '0' }}">
             <td style="white-space:nowrap">
               <strong>{{ a.user }}</strong>
               {% if a.is_sudo %}
@@ -3698,8 +3698,15 @@ div[style*="position: fixed"] .card {
                     <span class="badge badge-up" style="font-size:9.5px;font-family:monospace;padding:1px 5px"><span class="dot up" style="margin-right:3px"></span>{{ s.tty }}{% if s.from %} @ {{ s.from }}{% endif %}</span>{% if not loop.last %} {% endif %}
                   {% endfor %}
                 </div>
+                <div style="font-size:11px;color:var(--dim)">{{ a.last_login or '-' }}</div>
+              {% elif a.procs_count and a.procs_count > 0 %}
+                <div style="margin-bottom:2px">
+                  <span class="badge badge-info" style="font-size:9.5px;padding:1px 5px" title="{{ a.procs_count }} proses sistem aktif"><span class="dot" style="background:#38bdf8;margin-right:3px"></span>{{ a.procs_count }} proses aktif</span>
+                </div>
+                <div class="mono" style="font-size:11px;color:var(--dim);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ a.primary_proc or a.last_login or '-' }}">{{ a.primary_proc or a.last_login or '-' }}</div>
+              {% else %}
+                <div style="font-size:11px;color:var(--dim)">{{ a.last_login or '-' }}</div>
               {% endif %}
-              <div style="font-size:11px;color:var(--dim)">{{ a.last_login or '-' }}</div>
             </td>
             <td class="col-act" style="white-space:nowrap;text-align:center">
               <details class="noc-act-dropdown">
@@ -3821,7 +3828,7 @@ div[style*="position: fixed"] .card {
     {% set acc_acts = [] %}
     {% if actions %}
       {% for act in actions %}
-        {% if act.action and ('user_' in act.action or 'user' in act.action or 'akun ' in (act.target|lower) or act.action in ('login_session', 'service_exec', 'cron_job', 'fim_event', 'proses', 'sudo', 'shell') or act.category == 'account') %}
+        {% if act.action and ('user_' in act.action or 'user' in act.action or 'akun ' in (act.target|lower) or act.action in ('login_session', 'service_exec', 'cron_job', 'proses', 'sudo', 'shell') or act.category == 'account') %}
           {% set _ = acc_acts.append(act) %}
         {% endif %}
       {% endfor %}
@@ -10112,7 +10119,7 @@ function renderActionHistory(actions) {
       const tgt = (a.target || '').toLowerCase();
       const cat = (a.category || '').toLowerCase();
       return act.startsWith('user_') || act.includes('user') || act.includes('pengguna') || tgt.includes('akun ') ||
-             ['login_session', 'service_exec', 'cron_job', 'fim_event', 'proses', 'sudo', 'shell'].includes(act) ||
+             ['login_session', 'service_exec', 'cron_job', 'proses', 'sudo', 'shell'].includes(act) ||
              cat === 'account';
     });
     if (accBadge) {

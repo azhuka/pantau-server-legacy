@@ -429,74 +429,75 @@ def _get_server_actions(db: Session, sid: int, limit: int = 50) -> list[dict]:
             except Exception:
                 pass
 
-    # 3c. Tindakan Proses Layanan Utama yang Dijalankan oleh Akun Sistem (www-data, mysql, redis, postfix, dll.)
-    if services:
-        known_service_users = {
-            "mariadb": "mysql", "mysql": "mysql", "mysqld": "mysql",
-            "nginx": "www-data", "apache2": "www-data", "httpd": "www-data", "php-fpm": "www-data",
-            "redis": "redis", "redis-server": "redis",
-            "postfix": "postfix", "smtpd": "postfix", "dovecot": "dovecot",
-            "systemd-resolved": "systemd-resolve", "named": "bind",
-            "zabbix-agent2": "zabbix", "zabbix-agent": "zabbix",
-        }
-        for svc in services:
-            s_name = (svc.service_name or "").lower()
-            s_proc = (svc.process_name or "").lower()
-            u_svc = known_service_users.get(s_name) or known_service_users.get(s_proc) or "root"
-            svc_ts = server.last_seen or datetime.utcnow()
-            port_suffix = f" (Port {svc.port})" if svc.port else ""
-            rows.append({
-                "id": f"svc-run-{svc.id}",
-                "time": svc_ts,
-                "user": u_svc,
-                "action": "service_exec",
-                "action_label": "Proses Layanan",
-                "target": f"{svc.service_name}{port_suffix}",
-                "status": "success",
-                "status_cls": "up",
-                "status_label": "berjalan",
-                "result": f"Layanan {svc.service_name} aktif dijalankan oleh pengguna {u_svc}",
-                "category": "account",
-            })
+    # 3c. Tindakan Proses Layanan & Daemon yang Dijalankan oleh Akun (Reguler & Sistem)
+    # Diambil secara dinamis dari data telemetri fisik akun dan top_procs riil host klien (Bebas dari kamus hardcode!)
+    seen_act_keys = set()
+    if extras:
+        # Ekstrak proses aktif dari data accounts
+        if extras.accounts:
+            try:
+                accounts_data = json.loads(extras.accounts)
+                for acc in (accounts_data if isinstance(accounts_data, list) else []):
+                    u_name = acc.get("user")
+                    if not u_name or u_name == "pantau":
+                        continue
+                    user_procs = acc.get("procs") or []
+                    for p in user_procs:
+                        pid = p.get("pid")
+                        comm = p.get("comm") or "proses"
+                        cmd_line = p.get("args") or comm
+                        act_key = (u_name, pid, comm)
+                        if act_key in seen_act_keys:
+                            continue
+                        seen_act_keys.add(act_key)
+                        cpu_val = p.get("cpu", 0)
+                        mem_val = p.get("mem", 0)
+                        rows.append({
+                            "id": f"proc-{u_name}-{pid}",
+                            "time": extras.updated_at or datetime.utcnow(),
+                            "user": u_name,
+                            "action": "service_exec",
+                            "action_label": "Proses Layanan",
+                            "target": f"PID {pid} ({comm})",
+                            "status": "success",
+                            "status_cls": "up",
+                            "status_label": "berjalan",
+                            "result": f"{cmd_line} (CPU: {cpu_val}%, MEM: {mem_val}%)",
+                            "category": "account",
+                        })
+            except Exception:
+                pass
 
-    # 3d. Tindakan Kejadian Integritas Berkas (FIM) Terkait Akun
-    try:
-        fim_evs = (
-            db.query(FIMEvent)
-            .filter(FIMEvent.server_id == sid)
-            .order_by(desc(FIMEvent.detected_at))
-            .limit(20)
-            .all()
-        )
-        for fe in fim_evs:
-            p_lower = fe.path.lower()
-            if "/var/www" in p_lower:
-                fe_user = "www-data"
-            elif "/var/lib/mysql" in p_lower:
-                fe_user = "mysql"
-            elif "/var/lib/redis" in p_lower:
-                fe_user = "redis"
-            elif "/home/" in p_lower:
-                parts = fe.path.split("/")
-                fe_user = parts[2] if len(parts) > 2 else "user"
-            else:
-                fe_user = "root"
-
-            rows.append({
-                "id": f"fim-act-{fe.id}",
-                "time": fe.detected_at,
-                "user": fe_user,
-                "action": "fim_event",
-                "action_label": "Integritas Berkas",
-                "target": fe.path,
-                "status": "failed" if fe.severity == "danger" else ("warning" if fe.severity == "warning" else "success"),
-                "status_cls": "danger" if fe.severity == "danger" else ("warn" if fe.severity == "warning" else "up"),
-                "status_label": fe.event_type.lower(),
-                "result": fe.details or "—",
-                "category": "account",
-            })
-    except Exception:
-        pass
+        # Ekstrak proses tambahan dari top_procs jika ada yang belum tercakup
+        if extras.top_procs:
+            try:
+                top_data = json.loads(extras.top_procs)
+                all_top = (top_data.get("cpu") or []) + (top_data.get("mem") or [])
+                for tp in all_top:
+                    u_name = tp.get("user")
+                    pid = tp.get("pid")
+                    comm = tp.get("comm") or "proses"
+                    if not u_name or u_name == "pantau" or not pid:
+                        continue
+                    act_key = (u_name, pid, comm)
+                    if act_key in seen_act_keys:
+                        continue
+                    seen_act_keys.add(act_key)
+                    rows.append({
+                        "id": f"top-proc-{u_name}-{pid}",
+                        "time": extras.updated_at or datetime.utcnow(),
+                        "user": u_name,
+                        "action": "service_exec",
+                        "action_label": "Proses Layanan",
+                        "target": f"PID {pid} ({comm})",
+                        "status": "success",
+                        "status_cls": "up",
+                        "status_label": "berjalan",
+                        "result": f"Proses sistem {comm} aktif dijalankan oleh pengguna {u_name} (CPU: {tp.get('cpu', 0)}%, MEM: {tp.get('mem', 0)}%)",
+                        "category": "account",
+                    })
+            except Exception:
+                pass
 
     rows.sort(key=lambda r: r["time"], reverse=True)
     effective_limit = max(limit, 100)

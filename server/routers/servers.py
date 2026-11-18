@@ -1449,7 +1449,55 @@ def user_activity_page(request: Request, sid: int, username: str, db: Session = 
                     "active": True,
                 })
 
-        # 2. Tugas terjadwal dari cron_jobs
+        # 2. Proses layanan aktif yang dijalankan oleh pengguna (Reguler & Sistem)
+        seen_proc_pids = set()
+        if account and account.get("procs"):
+            for p in account.get("procs", []):
+                pid_val = p.get("pid")
+                if pid_val in seen_proc_pids:
+                    continue
+                seen_proc_pids.add(pid_val)
+                p_comm = p.get("comm") or "proses"
+                p_cmd = p.get("args") or p_comm
+                cached_acts.append({
+                    "ts": extra.updated_at.strftime("%Y-%m-%d %H:%M:%S") if extra.updated_at else now_str,
+                    "user": username,
+                    "type": "proses",
+                    "from": "(proses)",
+                    "tty": f"PID {pid_val}",
+                    "pwd": "—",
+                    "target_user": username,
+                    "alert": f"Proses Layanan Aktif ({p.get('stat', 'S')})",
+                    "method": p_cmd,
+                    "active": True,
+                })
+        if extra.top_procs:
+            try:
+                top_obj = json.loads(extra.top_procs)
+                all_tp = (top_obj.get("cpu") or []) + (top_obj.get("mem") or [])
+                for tp in all_tp:
+                    if tp.get("user") == username:
+                        pid_val = tp.get("pid")
+                        if pid_val in seen_proc_pids:
+                            continue
+                        seen_proc_pids.add(pid_val)
+                        p_comm = tp.get("comm") or "proses"
+                        cached_acts.append({
+                            "ts": extra.updated_at.strftime("%Y-%m-%d %H:%M:%S") if extra.updated_at else now_str,
+                            "user": username,
+                            "type": "proses",
+                            "from": "(proses)",
+                            "tty": f"PID {pid_val}",
+                            "pwd": "—",
+                            "target_user": username,
+                            "alert": f"Proses Layanan Aktif ({tp.get('state', 'S')})",
+                            "method": p_comm,
+                            "active": True,
+                        })
+            except Exception:
+                pass
+
+        # 3. Tugas terjadwal dari cron_jobs
         if extra.cron_jobs:
             try:
                 cron_obj = json.loads(extra.cron_jobs)
@@ -1473,7 +1521,7 @@ def user_activity_page(request: Request, sid: int, username: str, db: Session = 
             except Exception:
                 pass
 
-        # 3. Kejadian FIM terkait user
+        # 4. Kejadian integritas berkas fisik pengguna (Hanya berkas home direktori pengguna)
         try:
             fim_user_q = (
                 db.query(FIMEvent)
@@ -1483,15 +1531,8 @@ def user_activity_page(request: Request, sid: int, username: str, db: Session = 
                 .all()
             )
             for fe in fim_user_q:
-                p_low = fe.path.lower()
                 is_match = False
-                if username == "www-data" and ("/var/www" in p_low or "nginx" in p_low or "apache" in p_low):
-                    is_match = True
-                elif username == "mysql" and ("/var/lib/mysql" in p_low or "my.cnf" in p_low):
-                    is_match = True
-                elif username == "root" and ("/etc/" in p_low or "/root" in p_low):
-                    is_match = True
-                elif f"/home/{username}" in fe.path:
+                if fe.path.startswith(f"/home/{username}/") or (username == "root" and fe.path.startswith("/root/")):
                     is_match = True
 
                 if is_match:
