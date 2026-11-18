@@ -354,6 +354,11 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.24
+
+- File Duplication Safety (ADR-0028): Kloning lokal aman berkas/folder pada File Manager remote dengan penamaan timestamp presisi, disk space safety check (buffer 100MB), dan collision prevention.\n- Terminal Link Detection (ADR-0034): Deteksi URL interaktif bawaan xterm.js dengan kombinasi Ctrl+Click / Cmd+Click untuk membuka tautan langsung ke browser.
+
+
 ## Versi 4.11.23
 
 - In-App Activity Console (ADR-0030): Konsol telemetri runtime real-time via SSE, in-memory ring buffer, sensor kredensial (redaction filter), filter multi-level, live pill, dan pintasan Ctrl+`.\n- Public Status Page (ADR-0038): Halaman status mandiri /status tanpa login, masking data total, visual bar ketersediaan 90 hari interaktif, dark/light mode, cache ETag, dan token bucket rate limiter.

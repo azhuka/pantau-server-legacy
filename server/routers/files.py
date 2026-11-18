@@ -621,6 +621,47 @@ async def api_server_files_copy(
     return res
 
 
+@router.post("/api/servers/{sid}/files/duplicate")
+async def api_server_files_duplicate(
+    sid: int,
+    request: Request,
+    body: dict = Body(...),
+    user: User = Depends(require_file_manager),
+    db: Session = Depends(get_db),
+):
+    """Duplikasi kloning lokal aman berkas/folder di remote host dengan verifikasi sisa partisi (ADR-0028)."""
+    _verify_csrf_header(request)
+    server = _get_active_online_server(db, sid, user=user)
+
+    source = str(body.get("source", "")).strip()
+    target_name = str(body.get("target_name", "")).strip()
+    if not source:
+        raise HTTPException(status_code=400, detail="Path sumber harus ditentukan")
+
+    res = await file_dispatcher.dispatch(
+        sid, "duplicate", {"source_path": source, "target_name": target_name}, timeout=60.0
+    )
+    if not res.get("ok"):
+        err_msg = res.get("error", "Gagal melakukan duplikasi file/folder")
+        status_c = 400
+        if "tidak mencukupi" in err_msg.lower() or "insufficient" in err_msg.lower():
+            status_c = 507
+        elif "sudah ada" in err_msg.lower() or "exists" in err_msg.lower():
+            status_c = 409
+        raise HTTPException(status_code=status_c, detail=err_msg)
+
+    _audit(
+        db,
+        user.username,
+        "file_duplicate",
+        f"{server.hostname}: {source} -> {res.get('target_name', target_name)}",
+        "berhasil",
+        server_id=sid,
+    )
+    db.commit()
+    return res
+
+
 @router.post("/api/servers/{sid}/files/move")
 async def api_server_files_move(
     sid: int,

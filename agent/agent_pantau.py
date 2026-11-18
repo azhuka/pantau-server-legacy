@@ -489,7 +489,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.23"
+AGENT_VERSION = "4.11.24"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -8072,6 +8072,7 @@ import hashlib
 import subprocess
 import re
 from pathlib import Path
+from datetime import datetime
 
 # Direktori dan berkas kritis yang mutlak dilarang dimanipulasi/dihapus
 PROTECTED_PATHS = {
@@ -9226,6 +9227,55 @@ def action_storage_reclaim(target: str) -> None:
         err_exit(f"Target reclaim tidak dikenal: '{target}'")
 
 
+def action_duplicate(source_path: str, target_name: str = "") -> None:
+    """Kloning lokal aman berkas atau direktori (ADR-0028)."""
+    if not source_path or not os.path.exists(source_path):
+        err_exit(f"Sumber berkas/direktori tidak ditemukan: '{source_path}'")
+    parent_dir = os.path.dirname(os.path.abspath(source_path))
+    if not target_name:
+        now_str = datetime.now().strftime("%Y%m%d%H%M%S")
+        base = os.path.basename(source_path)
+        if os.path.isfile(source_path) and "." in base and not base.startswith("."):
+            parts = base.rsplit(".", 1)
+            target_name = f"{parts[0]}_{now_str}.{parts[1]}"
+        else:
+            target_name = f"{base}_{now_str}"
+
+    target_name = os.path.basename(target_name.strip())
+    if not target_name:
+        err_exit("Nama target duplikasi tidak valid")
+
+    target_path = os.path.join(parent_dir, target_name)
+    if os.path.exists(target_path):
+        err_exit(f"Target berkas/direktori sudah ada: '{target_path}'")
+
+    # Disk Space Safety Check (ADR-0028): periksa kapasitas sisa partisi + safety buffer 100 MB
+    src_bytes = 0
+    try:
+        vfs = os.statvfs(parent_dir)
+        free_bytes = vfs.f_bavail * vfs.f_frsize
+        if os.path.isfile(source_path):
+            src_bytes = os.path.getsize(source_path)
+        else:
+            du_res = subprocess.run(["du", "-sk", source_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if du_res.returncode == 0:
+                src_bytes = int(du_res.stdout.split()[0]) * 1024
+            else:
+                src_bytes = 10 * 1024 * 1024
+        SAFETY_BUFFER = 100 * 1024 * 1024
+        if free_bytes < (src_bytes + SAFETY_BUFFER):
+            err_exit(f"Kapasitas sisa partisi tidak mencukupi (tersedia: {free_bytes // 1048576} MB, dibutuhkan: {(src_bytes + SAFETY_BUFFER) // 1048576} MB termasuk buffer 100MB)")
+    except Exception:
+        pass
+
+    cmd = ["cp", "-a", "--", source_path, target_path]
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if res.returncode != 0:
+        err_exit(f"Gagal melakukan duplikasi: {res.stderr.strip() or 'Unknown error'}")
+
+    ok_exit({"target_path": target_path, "target_name": target_name, "source_size": src_bytes})
+
+
 def main():
     payload = None
     if not sys.stdin.isatty():
@@ -9306,6 +9356,8 @@ def main():
         action_truncate_log(params.get("path", ""))
     elif action == "storage_reclaim":
         action_storage_reclaim(params.get("target", ""))
+    elif action == "duplicate":
+        action_duplicate(params.get("source_path", params.get("source", "")), params.get("target_name", ""))
     else:
         err_exit(f"Aksi tidak dikenal: '{action}'")
 
@@ -9326,7 +9378,7 @@ def ensure_pantau_file_updated(force: bool = False) -> bool:
                     cur_content = f.read()
             except Exception:
                 pass
-            if "def action_storage_triage" in cur_content and "def get_parent_ownership" in cur_content and "action_truncate_log" in cur_content:
+            if "def action_storage_triage" in cur_content and "def get_parent_ownership" in cur_content and "action_truncate_log" in cur_content and "def action_duplicate" in cur_content:
                 return True
 
         content_to_write = PANTAU_FILE_SCRIPT_BODY.strip() + "\n"

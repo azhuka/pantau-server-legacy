@@ -334,6 +334,36 @@
   </div>
 </div>
 
+<!-- MODAL: Duplikat Berkas / Folder (ADR-0028) -->
+<div id="fm-duplicate-modal" class="fm-modal-backdrop" style="display:none" onclick="if(event.target===this)fmCloseDuplicate()">
+  <div class="fm-modal-card" style="max-width:440px">
+    <div class="fm-modal-header">
+      <span style="font-weight:600;font-size:13.5px">📋 Duplikat Berkas / Folder</span>
+      <button type="button" class="btn btn-ghost btn-xs" onclick="fmCloseDuplicate()">&times;</button>
+    </div>
+    <form id="fm-duplicate-form" onsubmit="fmSubmitDuplicate(event)">
+      <div class="fm-modal-body" style="padding:16px 20px">
+        <div style="font-size:12px;color:var(--dim);margin-bottom:8px">Item Sumber:</div>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--input-bg,#0d1117);padding:8px 12px;border-radius:6px;border:1px solid var(--border);margin-bottom:14px">
+          <span id="fm-duplicate-icon" style="font-size:16px">📄</span>
+          <span id="fm-duplicate-source-name" style="font-weight:600;word-break:break-all;color:var(--text);font-size:12.5px"></span>
+          <span id="fm-duplicate-source-size" class="badge badge-muted" style="margin-left:auto;font-size:10.5px"></span>
+        </div>
+        <div id="fm-duplicate-large-warn" style="display:none;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:var(--warning,#f59e0b);padding:8px 12px;border-radius:6px;font-size:11.5px;margin-bottom:12px">
+          ⚠️ <strong>Ukuran Besar (&ge; 500 MB):</strong> Proses kloning partisi mungkin membutuhkan waktu beberapa saat.
+        </div>
+        <label for="fm-duplicate-target-input" style="display:block;font-size:12px;font-weight:600;margin-bottom:6px">Nama Berkas Baru (Default ber-timestamp):</label>
+        <input type="text" id="fm-duplicate-target-input" style="width:100%;font-size:13px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:monospace" required autofocus>
+        <div id="fm-duplicate-err" style="display:none;color:var(--red,#ef4444);font-size:11.5px;margin-top:8px"></div>
+      </div>
+      <div class="fm-modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--border)">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="fmCloseDuplicate()">Batal</button>
+        <button type="submit" id="fm-duplicate-submit-btn" class="btn btn-primary btn-sm">Kloning Sekarang</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- MODAL: Upload File -->
 <div id="fm-upload-modal" class="fm-modal-backdrop" style="display:none" onclick="if(event.target===this)fmCloseUpload()">
   <div class="fm-modal-card">
@@ -1536,6 +1566,7 @@ function fmRenderItems(items) {
             ${!item.is_dir ? `<button type="button" class="noc-act-dropdown-item" ${!IS_ONLINE ? 'disabled style="opacity:0.35;cursor:not-allowed"' : ''} onclick="fmOpenFile('${safePath}')">${FM_ICONS.edit} <span>${isEn ? 'View & Edit' : 'Lihat & Edit'}</span></button>` : ''}
             ${!item.is_dir ? `<button type="button" class="noc-act-dropdown-item" ${!IS_ONLINE ? 'disabled style="opacity:0.35;cursor:not-allowed"' : ''} onclick="fmDownloadFile('${safePath}')">${FM_ICONS.download} <span>Download</span></button>` : ''}
             <button type="button" class="noc-act-dropdown-item" ${!IS_ONLINE ? 'disabled style="opacity:0.35;cursor:not-allowed"' : ''} onclick="fmCopySingle('${safePath}')">${FM_ICONS.copy} <span>${isEn ? 'Copy' : 'Salin'}</span></button>
+            <button type="button" class="noc-act-dropdown-item" ${!IS_ONLINE ? 'disabled style="opacity:0.35;cursor:not-allowed"' : ''} onclick="fmOpenDuplicate('${safePath}', '${safeName}', ${item.is_dir}, ${item.size || 0})">${FM_ICONS.copy} <span>${isEn ? 'Duplicate' : 'Duplikat'}</span></button>
             <button type="button" class="noc-act-dropdown-item" ${!IS_ONLINE ? 'disabled style="opacity:0.35;cursor:not-allowed"' : ''} onclick="fmCutSingle('${safePath}')">${FM_ICONS.cut} <span>${isEn ? 'Cut' : 'Potong'}</span></button>
             <button type="button" class="noc-act-dropdown-item" ${!IS_ONLINE ? 'disabled style="opacity:0.35;cursor:not-allowed"' : ''} onclick="fmOpenChmod('${safePath}', '${item.mode_octal || '0644'}', '${escapeHtml(item.owner || '')}', '${escapeHtml(item.group || '')}')">${FM_ICONS.chmod} <span>${isEn ? 'Permissions' : 'Ubah Hak Akses'}</span></button>
             <button type="button" class="noc-act-dropdown-item" ${!IS_ONLINE ? 'disabled style="opacity:0.35;cursor:not-allowed"' : ''} onclick="fmOpenRename('${safePath}', '${safeName}')">${FM_ICONS.rename} <span>${isEn ? 'Rename' : 'Ganti Nama'}</span></button>
@@ -1988,6 +2019,100 @@ async function fmSubmitRename(e) {
 
   } catch (err) {
     const isEn = (typeof currentLang !== 'undefined' && currentLang === 'en') || ((localStorage.getItem('app_lang') || 'id') === 'en');
+    submitBtn.disabled = false;
+    errorBox.textContent = (isEn ? 'Failed: ' : 'Gagal: ') + err.message;
+    errorBox.style.display = 'block';
+  }
+}
+
+// ===========================================================================
+// DUPLIKAT BERKAS / FOLDER (ADR-0028)
+// ===========================================================================
+let fmDuplicateTarget = null;
+
+function fmOpenDuplicate(path, name, isDir, sizeBytes) {
+  fmDuplicateTarget = path;
+  const isEn = (typeof currentLang !== 'undefined' && currentLang === 'en') || ((localStorage.getItem('app_lang') || 'id') === 'en');
+
+  document.getElementById('fm-duplicate-source-name').textContent = name;
+  document.getElementById('fm-duplicate-icon').textContent = isDir ? '📁' : '📄';
+  document.getElementById('fm-duplicate-source-size').textContent = isDir ? (isEn ? 'Directory' : 'Direktori') : formatBytes(sizeBytes || 0);
+
+  // Warning jika ukuran >= 500 MB (524288000 bytes)
+  const warnBox = document.getElementById('fm-duplicate-large-warn');
+  if (warnBox) {
+    warnBox.style.display = (!isDir && (sizeBytes || 0) >= 524288000) ? 'block' : 'none';
+  }
+
+  // Format penamaan default ber-timestamp presisi: <base>_<YYYYMMDDHHmmss>.<ext>
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const ts = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+  let defaultTargetName = `${name}_${ts}`;
+  let basePart = name;
+  if (!isDir && name.includes('.') && !name.startsWith('.')) {
+    const lastDot = name.lastIndexOf('.');
+    basePart = name.substring(0, lastDot);
+    const ext = name.substring(lastDot);
+    defaultTargetName = `${basePart}_${ts}${ext}`;
+  }
+
+  const inp = document.getElementById('fm-duplicate-target-input');
+  inp.value = defaultTargetName;
+  document.getElementById('fm-duplicate-err').style.display = 'none';
+  document.getElementById('fm-duplicate-submit-btn').disabled = false;
+  document.getElementById('fm-duplicate-modal').style.display = 'flex';
+
+  setTimeout(() => {
+    inp.focus();
+    const selEnd = defaultTargetName.indexOf(`_${ts}`);
+    if (selEnd > 0) {
+      inp.setSelectionRange(0, selEnd);
+    } else {
+      inp.select();
+    }
+  }, 50);
+}
+
+function fmCloseDuplicate() {
+  document.getElementById('fm-duplicate-modal').style.display = 'none';
+  fmDuplicateTarget = null;
+}
+
+async function fmSubmitDuplicate(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (!fmDuplicateTarget) return;
+
+  const targetName = document.getElementById('fm-duplicate-target-input').value.trim();
+  if (!targetName) return;
+
+  const submitBtn = document.getElementById('fm-duplicate-submit-btn');
+  const errorBox = document.getElementById('fm-duplicate-err');
+  const isEn = (typeof currentLang !== 'undefined' && currentLang === 'en') || ((localStorage.getItem('app_lang') || 'id') === 'en');
+
+  submitBtn.disabled = true;
+  errorBox.style.display = 'none';
+
+  try {
+    const res = await fmFetch(`/api/servers/${SID}/files/duplicate`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrf() },
+      body: JSON.stringify({ source: fmDuplicateTarget, target_name: targetName })
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || (isEn ? 'Failed to duplicate file/folder' : 'Gagal menduplikasi berkas/folder'));
+    }
+
+    fmCloseDuplicate();
+    if (typeof showToast === 'function') {
+      showToast(isEn ? `Successfully duplicated to: ${targetName}` : `Berhasil menduplikasi ke: ${targetName}`, true);
+    }
+    fmLoadDir(fmCurrentPath, false);
+  } catch (err) {
     submitBtn.disabled = false;
     errorBox.textContent = (isEn ? 'Failed: ' : 'Gagal: ') + err.message;
     errorBox.style.display = 'block';
@@ -2541,6 +2666,7 @@ document.addEventListener('keydown', (e) => {
         if (m.id === 'fm-page-unlock-modal' && (!fmIsUnlocked || fmLeaseSecondsLeft <= 0)) continue;
         if (m.id === 'fm-editor-modal') { fmCloseEditor(); return; }
         if (m.id === 'fm-rename-modal') { fmCloseRename(); return; }
+        if (m.id === 'fm-duplicate-modal') { fmCloseDuplicate(); return; }
         if (m.id === 'fm-upload-modal') { fmCloseUpload(); return; }
         if (m.id === 'fm-chmod-modal') { fmCloseChmod(); return; }
         if (m.id === 'fm-delete-modal') { fmCloseDelete(); return; }
@@ -2609,6 +2735,7 @@ document.addEventListener('click', (e) => {
     }
     if (e.target.id === 'fm-editor-modal') { fmCloseEditor(); return; }
     if (e.target.id === 'fm-rename-modal') { fmCloseRename(); return; }
+    if (e.target.id === 'fm-duplicate-modal') { fmCloseDuplicate(); return; }
     if (e.target.id === 'fm-upload-modal') { fmCloseUpload(); return; }
     if (e.target.id === 'fm-chmod-modal') { fmCloseChmod(); return; }
     if (e.target.id === 'fm-delete-modal') { fmCloseDelete(); return; }

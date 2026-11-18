@@ -8528,6 +8528,47 @@ class WebTerminal {
 
     this.term.open(this.containerEl);
 
+    // Registrasi Link Provider Interaktif Native xterm.js (ADR-0034)
+    if (typeof this.term.registerLinkProvider === 'function') {
+      const URL_REGEX = /(https?:\/\/[^\s<>"'()]+|https?:\/\/localhost:[0-9]+[^\s<>"'()]*|https?:\/\/127\.0\.0\.1:[0-9]+[^\s<>"'()]*|localhost:[0-9]+[^\s<>"'()]*|127\.0\.0\.1:[0-9]+[^\s<>"'()]*)/gi;
+      this.term.registerLinkProvider({
+        provideLinks: (bufferLineNumber, callback) => {
+          try {
+            const line = this.term.buffer.active.getLine(bufferLineNumber - 1);
+            if (!line) { callback(undefined); return; }
+            const text = line.translateToString(true);
+            const matches = [];
+            let match;
+            URL_REGEX.lastIndex = 0;
+            while ((match = URL_REGEX.exec(text)) !== null) {
+              const urlStr = match[0];
+              const startX = match.index + 1;
+              const endX = startX + urlStr.length;
+              matches.push({
+                range: { start: { x: startX, y: bufferLineNumber }, end: { x: endX, y: bufferLineNumber } },
+                text: urlStr,
+                activate: (event, uri) => {
+                  if (event && (event.ctrlKey || event.metaKey)) {
+                    let targetUrl = uri;
+                    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+                      targetUrl = 'http://' + targetUrl;
+                    }
+                    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                  }
+                },
+                tooltip: (event, uri) => {
+                  return 'Ctrl+Click (Cmd+Click) untuk membuka tautan di tab baru';
+                }
+              });
+            }
+            callback(matches.length > 0 ? matches : undefined);
+          } catch(e) {
+            callback(undefined);
+          }
+        }
+      });
+    }
+
     // Kirim ketikan user ke WebSocket seketika tanpa latency
     this.term.onData(data => {
       if (!data) return;
