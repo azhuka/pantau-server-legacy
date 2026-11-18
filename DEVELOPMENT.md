@@ -354,6 +354,13 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.14
+
+### v4.11.14 (18 November 2026)
+- **Comprehensive Volatile Path Classification:** Memperluas deteksi berkas volatil pada direktori dinamis (seperti subfolder WAF wflogs, logs) sehingga seluruh berkas status dinamis (misal config-synced.php, attack-data.php) diawasi pada tingkat atribut fisik (permissions, owner, group) tanpa memicu alarm palsu pada fluktuasi hash.
+- **Auto-Sync Baseline Directory Upgrade:** Memastikan re-sinkronisasi acuan direktori yang dipantau berjalan secara atomik saat pergantian versi agen sehingga kondisi baseline langsung selaras.
+
+
 ## Versi 4.11.13
 
 ### v4.11.13 (18 November 2026)

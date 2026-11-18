@@ -480,7 +480,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.13"
+AGENT_VERSION = "4.11.14"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -6518,6 +6518,8 @@ def _is_volatile_fim_file(rel_path: str, filename: str) -> bool:
     if f_lower.startswith("sess_"):
         return True
     parts = [p.lower() for p in rel_path.replace("\\", "/").split("/")[:-1]]
+    if any(d in {"wflogs", "logs", "log"} for d in parts):
+        return True
     if any(d in FIM_VOLATILE_DIR_NAMES for d in parts):
         if any(f_lower.endswith(ext) for ext in {".txt", ".dat", ".json", ".cache", ".data", ".bin", ".out", ".log", ".tmp"}):
             return True
@@ -6841,10 +6843,11 @@ def collect_fim(force: bool = False) -> dict:
         for p_key, b_val in list(baseline.items()):
             if p_key.startswith("_") or not isinstance(b_val, dict):
                 continue
-            if b_val.get("is_dir") or "files" in b_val or p_key == "/etc/systemd/system":
+            if os.path.isdir(p_key) or b_val.get("is_dir") or "files" in b_val or p_key == "/etc/systemd/system":
                 info_dir = _inspect_fim_target(p_key)
                 if info_dir.get("exists"):
                     dir_data = {
+                        "is_dir": True,
                         "sha256": info_dir.get("sha256", ""),
                         "size": info_dir.get("size", 0),
                         "mtime": info_dir.get("mtime", 0),
@@ -6858,6 +6861,7 @@ def collect_fim(force: bool = False) -> dict:
                     baseline[p_key] = dir_data
                     last_state[p_key] = dir_data
                     needs_save_last_state = True
+                    needs_save_baseline = True
 
         # Auto-promosi berkas baseline fallback 'meta:' ke SHA-256 asli pasca peningkatan kapabilitas wrapper
         for p_key, b_val in list(baseline.items()):
