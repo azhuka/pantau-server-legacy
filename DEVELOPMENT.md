@@ -354,6 +354,15 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.15
+
+### v4.11.15 (18 November 2026)
+- **Zero-Hardcoding & Agnostic Architecture:** Membongkar titik-titik hardcode warisan pada agen:
+  1. *Dynamic Socket Discovery:* Menghapus kamus statis tebakan port (guess_process_by_port) dan menggantinya dengan penemuan dinamis socket sistem operasi via systemd socket activation (systemctl list-sockets) dan label port objektif tanpa data karangan fiktif.
+  2. *Dynamic Log Discovery:* Menghapus rantai pengecekan hardcode path statis log Apache/Nginx/MySQL dan menggantinya dengan pemindaian dinamis katalog /var/log/* untuk mendeteksi sembarang berkas log layanan secara agnostik.
+  3. *Pure Physical FIM Volatile Evaluation:* Menghapus seluruh daftar hardcode nama berkas khusus pada mesin FIM dan murni mengandalkan karakteristik pola fisik objek berkas.
+
+
 ## Versi 4.11.14
 
 ### v4.11.14 (18 November 2026)

@@ -181,14 +181,22 @@ def is_dev_tool(proc_name: str | None, pid: int | None) -> bool:
     return False
 
 
-def guess_process_by_port(port: int) -> str | None:
-    well_known = {
-        22: "sshd", 25: "smtp", 53: "dns", 80: "http", 443: "https",
-        3306: "mysql", 5432: "postgresql", 6379: "redis",
-        8000: "uvicorn", 8400: "uvicorn", 9000: "uvicorn",
-        8080: "http-alt", 8443: "https-alt", 27017: "mongodb",
-    }
-    return well_known.get(port)
+def get_systemd_socket_service(port: int) -> str | None:
+    """Temukan service pemilik socket listening via systemctl list-sockets secara dinamis (tanpa tebak-tebak port)."""
+    try:
+        res = subprocess.run(["systemctl", "list-sockets", "--no-legend"], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            for line in res.stdout.strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 3 and f":{port}" in parts[0]:
+                    svc = parts[2]
+                    if svc.endswith(".service"):
+                        svc = svc[:-8]
+                    if svc and svc != "-":
+                        return svc
+    except Exception:
+        pass
+    return None
 
 
 def normalize_process_name(name: str) -> str:
@@ -255,10 +263,11 @@ def parse_ss_listening() -> list[dict]:
             continue
 
         if not proc_name:
-            guessed = guess_process_by_port(port)
-            if not guessed:
-                continue
-            proc_name = guessed
+            socket_svc = get_systemd_socket_service(port)
+            if socket_svc:
+                proc_name = socket_svc
+            else:
+                proc_name = f"port-{port}"
 
         if port >= EPHEMERAL_START and not proc_match:
             continue
@@ -480,7 +489,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.14"
+AGENT_VERSION = "4.11.15"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -4951,60 +4960,21 @@ def _run_shell_in_thread(cfg: dict, rid: int) -> None:
 
 
 def fetch_log_lines(unit: str, lines: int) -> str:
-    """Ambil log layanan: unit journal, file access/error log, syslog, auth, atau dpkg."""
+    """Ambil baris log layanan secara dinamis dan agnostik."""
+    if not unit:
+        return "[Target log tidak ditentukan]"
+
+    # 1. Jika unit adalah path berkas fisik absolut langsung
+    if unit.startswith("/") and os.path.isfile(unit):
+        return _tail_file(unit, lines)
+
     u_upper = unit.upper()
 
-    # 1. Web Server: Nginx Access & Error Log
-    if u_upper in ("NGINX_ACCESS", "NGINX-ACCESS"):
-        for cand in ("/var/log/nginx/access.log", "/var/log/nginx/access_log"):
-            if os.path.isfile(cand):
-                return _tail_file(cand, lines)
-        return "[Berkas log /var/log/nginx/access.log tidak ditemukan di server ini]"
-
-    if u_upper in ("NGINX_ERROR", "NGINX-ERROR"):
-        for cand in ("/var/log/nginx/error.log", "/var/log/nginx/error_log"):
-            if os.path.isfile(cand):
-                return _tail_file(cand, lines)
-        return "[Berkas log /var/log/nginx/error.log tidak ditemukan di server ini]"
-
-    # 2. Web Server: Apache / HTTPD Access & Error Log
-    if u_upper in ("APACHE_ACCESS", "APACHE-ACCESS", "HTTPD_ACCESS"):
-        for cand in ("/var/log/apache2/access.log", "/var/log/httpd/access_log", "/var/log/apache2/other_vhosts_access.log"):
-            if os.path.isfile(cand):
-                return _tail_file(cand, lines)
-        return "[Berkas log access Apache/HTTPD tidak ditemukan di server ini]"
-
-    if u_upper in ("APACHE_ERROR", "APACHE-ERROR", "HTTPD_ERROR"):
-        for cand in ("/var/log/apache2/error.log", "/var/log/httpd/error_log"):
-            if os.path.isfile(cand):
-                return _tail_file(cand, lines)
-        return "[Berkas log error Apache/HTTPD tidak ditemukan di server ini]"
-
-    # 3. Database: MariaDB / MySQL Error & Slow Query Log
-    if u_upper in ("MARIADB_ERROR", "MYSQL_ERROR"):
-        for cand in ("/var/log/mysql/error.log", "/var/log/mariadb/mariadb.log", "/var/log/mysqld.log"):
-            if os.path.isfile(cand):
-                return _tail_file(cand, lines)
-        res = _run_cmd(["journalctl", "-u", "mariadb", "-u", "mysql", "-n", str(lines), "--no-pager", "-o", "short-iso"], timeout=20)
-        return (res.stdout.rstrip() if res else "") or "[Berkas log error MySQL/MariaDB tidak ditemukan di server ini]"
-
-    if u_upper in ("MARIADB_SLOW", "MYSQL_SLOW"):
-        for cand in ("/var/log/mysql/mariadb-slow.log", "/var/log/mysql/mysql-slow.log"):
-            if os.path.isfile(cand):
-                return _tail_file(cand, lines)
-        return "[Berkas slow query log tidak aktif atau tidak ditemukan (/var/log/mysql/mariadb-slow.log)]"
-
-    # 4. Keamanan & Paket: Dpkg & Auth
-    if u_upper in ("DPKG", "PKG_LOGS", "DPKG_LOG"):
-        for cand in ("/var/log/dpkg.log", "/var/log/apt/history.log", "/var/log/dnf.log", "/var/log/pacman.log"):
-            if os.path.isfile(cand):
-                return _tail_file(cand, lines)
-        return "[Berkas riwayat paket sistem tidak ditemukan di server ini]"
-
+    # 2. Log Keamanan & Sistem Universal
     if u_upper == "AUTH":
-        for cand in (AUTH_FILE, "/var/log/secure"):
-            if os.path.isfile(cand):
-                return _tail_file(cand, lines)
+        cand = AUTH_FILE if os.path.isfile(AUTH_FILE) else ("/var/log/secure" if os.path.isfile("/var/log/secure") else "")
+        if cand:
+            return _tail_file(cand, lines)
         res = _run_cmd(
             ["journalctl", "-u", "ssh", "-u", "sshd", "-u", "sudo", "-u", "systemd-logind",
              "-n", str(lines), "--no-pager", "-o", "short-iso"],
@@ -5018,17 +4988,33 @@ def fetch_log_lines(unit: str, lines: int) -> str:
         res = _run_cmd(["journalctl", "-n", str(lines), "--no-pager", "-o", "short-iso"], timeout=30)
         return (res.stdout.rstrip() if res else "") or f"[file {SYSLOG_FILE} tidak ditemukan]"
 
+    if u_upper in ("DPKG", "PKG_LOGS", "DPKG_LOG"):
+        for cand in ("/var/log/dpkg.log", "/var/log/apt/history.log", "/var/log/dnf.log", "/var/log/yum.log", "/var/log/pacman.log"):
+            if os.path.isfile(cand):
+                return _tail_file(cand, lines)
+        return "[Berkas riwayat paket sistem tidak ditemukan di server ini]"
+
     if u_upper in ("SYSTEM_ERRORS", "JOURNAL_ERRORS"):
         res = _run_cmd(["journalctl", "-p", "3", "-n", str(lines), "-r", "--no-pager", "-o", "short-iso"], timeout=20)
         return (res.stdout.rstrip() if res else "") or "[tidak ada catatan galat kritis sistem]"
 
-    # 5. Runtime Systemd Unit (Bawaan)
+    # 3. Pencarian Berkas Log dari Katalog Penemuan Dinamis
+    for log_item in collect_available_logs():
+        if log_item["id"].upper() == u_upper:
+            log_path = log_item.get("desc", "")
+            if log_path and os.path.isfile(log_path):
+                return _tail_file(log_path, lines)
+
+    # 4. Fallback Agnostik: Runtime Systemd Unit Journal
+    unit_clean = unit[:-8] if unit.endswith(".service") else unit
     res = _run_cmd(
-        ["journalctl", "-u", unit, "-n", str(lines), "--no-pager", "-o", "short-iso"],
+        ["journalctl", "-u", unit_clean, "-u", f"{unit_clean}.service", "-n", str(lines), "--no-pager", "-o", "short-iso"],
         timeout=30,
     )
-    if res is None:
-        return "[gagal menjalankan journalctl]"
+    if res and res.stdout.strip():
+        return res.stdout.rstrip()
+
+    return f"[Log untuk {unit} tidak ditemukan di server ini]"
     out = res.stdout.rstrip()
     if not out:
         msg = (res.stderr or "").strip()
@@ -6494,35 +6480,24 @@ def _cleanup_systemd_bak() -> None:
 
 # Pola karakteristik berkas volatil/log dinamis untuk Diferensiasi Kebijakan Atribut FIM
 FIM_VOLATILE_EXTENSIONS = {
-    ".log", ".tmp", ".swp", ".swo", ".pid", ".sock", ".sess", ".cache", ".dat",
-}
-FIM_VOLATILE_DIR_NAMES = {
-    "logs", "log", "cache", "sessions", "tmp", "temp", "wflogs",
-}
-FIM_VOLATILE_SPECIAL_FILENAMES = {
-    "ips.php", "config-livewaf.php", "debug.log", "error.log", "access.log",
+    ".log", ".tmp", ".swp", ".swo", ".pid", ".sock", ".sess", ".cache", ".dat", ".journal",
 }
 
 
 def _is_volatile_fim_file(rel_path: str, filename: str) -> bool:
-    """Evaluasi apakah berkas merupakan data volatil / log dinamis.
-    Berkas volatil tetap diawasi atribut keamanan fisiknya (hak akses, kepemilikan,
-    keberadaan, dan deteksi penghapusan) tanpa memicu alarm palsu pada pertumbuhan
-    ukuran log atau fluktuasi hash isi.
+    """Evaluasi agnostik apakah berkas merupakan data volatil / log dinamis.
+    Bebas dari hardcode nama aplikasi pihak ketiga. Berkas volatil tetap diawasi
+    atribut keamanan fisiknya (hak akses, kepemilikan, keberadaan, dan deteksi penghapusan)
+    tanpa memicu alarm palsu pada pertumbuhan ukuran log atau fluktuasi hash isi.
     """
     f_lower = filename.lower()
     if any(f_lower.endswith(ext) for ext in FIM_VOLATILE_EXTENSIONS):
         return True
-    if f_lower in FIM_VOLATILE_SPECIAL_FILENAMES:
-        return True
     if f_lower.startswith("sess_"):
         return True
     parts = [p.lower() for p in rel_path.replace("\\", "/").split("/")[:-1]]
-    if any(d in {"wflogs", "logs", "log"} for d in parts):
+    if any(p.endswith("logs") or p.endswith("log") or "cache" in p or p.startswith("sess") or p in {"tmp", "temp"} for p in parts):
         return True
-    if any(d in FIM_VOLATILE_DIR_NAMES for d in parts):
-        if any(f_lower.endswith(ext) for ext in {".txt", ".dat", ".json", ".cache", ".data", ".bin", ".out", ".log", ".tmp"}):
-            return True
     return False
 
 
@@ -7242,56 +7217,68 @@ _avail_logs_cache: dict = {"at": 0.0, "data": []}
 
 
 def collect_available_logs() -> list[dict]:
-    """Mendeteksi berkas log yang secara nyata ada di filesystem host klien (bukan tebak-tebak)."""
+    """Mendeteksi berkas log yang secara nyata ada di filesystem host klien secara dinamis (bebas hardcode kaku)."""
     now = time.monotonic()
     if _avail_logs_cache["data"] and now - _avail_logs_cache["at"] < 45:
         return _avail_logs_cache["data"]
 
     avail: list[dict] = []
+    seen_paths = set()
 
-    # 1. Web Servers (hanya jika berkas nyata ada di disk)
-    if os.path.isfile("/var/log/nginx/access.log"):
-        avail.append({"id": "NGINX_ACCESS", "group": "Web Server", "name": "Nginx Access Log", "desc": "/var/log/nginx/access.log"})
-    elif os.path.isfile("/var/log/nginx/access_log"):
-        avail.append({"id": "NGINX_ACCESS", "group": "Web Server", "name": "Nginx Access Log", "desc": "/var/log/nginx/access_log"})
+    def _add_log(log_id: str, group: str, name: str, path: str):
+        if path and path not in seen_paths and os.path.isfile(path):
+            seen_paths.add(path)
+            avail.append({"id": log_id, "group": group, "name": name, "desc": path})
 
-    if os.path.isfile("/var/log/nginx/error.log"):
-        avail.append({"id": "NGINX_ERROR", "group": "Web Server", "name": "Nginx Error Log", "desc": "/var/log/nginx/error.log"})
-    elif os.path.isfile("/var/log/nginx/error_log"):
-        avail.append({"id": "NGINX_ERROR", "group": "Web Server", "name": "Nginx Error Log", "desc": "/var/log/nginx/error_log"})
-
-    if os.path.isfile("/var/log/apache2/access.log"):
-        avail.append({"id": "APACHE_ACCESS", "group": "Web Server", "name": "Apache Access Log", "desc": "/var/log/apache2/access.log"})
-    elif os.path.isfile("/var/log/httpd/access_log"):
-        avail.append({"id": "APACHE_ACCESS", "group": "Web Server", "name": "HTTPD Access Log", "desc": "/var/log/httpd/access_log"})
-
-    if os.path.isfile("/var/log/apache2/error.log"):
-        avail.append({"id": "APACHE_ERROR", "group": "Web Server", "name": "Apache Error Log", "desc": "/var/log/apache2/error.log"})
-    elif os.path.isfile("/var/log/httpd/error_log"):
-        avail.append({"id": "APACHE_ERROR", "group": "Web Server", "name": "HTTPD Error Log", "desc": "/var/log/httpd/error_log"})
-
-    # 2. Database (hanya jika berkas nyata ada di disk)
-    if os.path.isfile("/var/log/mysql/error.log"):
-        avail.append({"id": "MARIADB_ERROR", "group": "Database", "name": "MySQL/MariaDB Error Log", "desc": "/var/log/mysql/error.log"})
-    elif os.path.isfile("/var/log/mariadb/mariadb.log"):
-        avail.append({"id": "MARIADB_ERROR", "group": "Database", "name": "MariaDB Error Log", "desc": "/var/log/mariadb/mariadb.log"})
-
-    if os.path.isfile("/var/log/mysql/mariadb-slow.log"):
-        avail.append({"id": "MARIADB_SLOW", "group": "Database", "name": "MariaDB Slow Query Log", "desc": "/var/log/mysql/mariadb-slow.log"})
-    elif os.path.isfile("/var/log/mysql/mysql-slow.log"):
-        avail.append({"id": "MARIADB_SLOW", "group": "Database", "name": "MySQL Slow Query Log", "desc": "/var/log/mysql/mysql-slow.log"})
-
-    # 3. Keamanan & Sistem
+    # 1. Log Keamanan & Sistem Baku
     auth_file = AUTH_FILE if os.path.isfile(AUTH_FILE) else ("/var/log/secure" if os.path.isfile("/var/log/secure") else "")
     if auth_file:
-        avail.append({"id": "AUTH", "group": "Keamanan & Sistem", "name": "Log Autentikasi SSH & Sudo", "desc": auth_file})
+        _add_log("AUTH", "Keamanan & Sistem", "Log Autentikasi SSH & Sudo", auth_file)
 
     syslog_file = SYSLOG_FILE if os.path.isfile(SYSLOG_FILE) else ("/var/log/messages" if os.path.isfile("/var/log/messages") else "")
     if syslog_file:
-        avail.append({"id": "SYSLOG", "group": "Keamanan & Sistem", "name": "Syslog Sistem", "desc": syslog_file})
+        _add_log("SYSLOG", "Keamanan & Sistem", "Syslog Sistem", syslog_file)
 
-    if os.path.isfile("/var/log/dpkg.log"):
-        avail.append({"id": "DPKG", "group": "Keamanan & Sistem", "name": "Riwayat Paket (dpkg.log)", "desc": "/var/log/dpkg.log"})
+    for pkg_cand, pkg_name in [
+        ("/var/log/dpkg.log", "Riwayat Paket (dpkg.log)"),
+        ("/var/log/apt/history.log", "Riwayat APT (history.log)"),
+        ("/var/log/dnf.log", "Riwayat DNF (dnf.log)"),
+        ("/var/log/yum.log", "Riwayat YUM (yum.log)"),
+        ("/var/log/pacman.log", "Riwayat Pacman (pacman.log)"),
+    ]:
+        if os.path.isfile(pkg_cand):
+            _add_log("DPKG", "Keamanan & Sistem", pkg_name, pkg_cand)
+            break
+
+    # 2. Penemuan Dinamis Berkas Log di /var/log/* (Web Server, Database, Layanan Aplikasi)
+    if os.path.isdir("/var/log"):
+        try:
+            for entry in os.scandir("/var/log"):
+                if entry.is_dir(follow_symlinks=False) and not entry.name.startswith("."):
+                    sub_name = entry.name.lower()
+                    if any(w in sub_name for w in ("nginx", "apache", "httpd", "caddy", "lighttpd", "traefik")):
+                        grp = "Web Server"
+                    elif any(db in sub_name for db in ("mysql", "mariadb", "postgres", "redis", "mongo")):
+                        grp = "Database"
+                    elif any(m in sub_name for m in ("mail", "postfix", "exim")):
+                        grp = "Mail Server"
+                    else:
+                        grp = f"Layanan ({entry.name})"
+
+                    try:
+                        for sub_f in os.scandir(entry.path):
+                            if sub_f.is_file() and sub_f.name.endswith(".log") and not sub_f.name.startswith("."):
+                                f_lower = sub_f.name.lower()
+                                if any(f_lower.endswith(sfx) for sfx in (".gz", ".1", ".2", ".old", ".bak")):
+                                    continue
+                                clean_stem = sub_f.name[:-4].replace("-", "_").upper()
+                                log_id = f"{entry.name.upper()}_{clean_stem}"
+                                disp_name = f"{entry.name.capitalize()} {sub_f.name[:-4].capitalize()} Log"
+                                _add_log(log_id, grp, disp_name, sub_f.path)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     avail.append({"id": "SYSTEM_ERRORS", "group": "Keamanan & Sistem", "name": "Jurnal Galat Kritis Sistem", "desc": "journalctl -p 0..3"})
 
