@@ -1,5 +1,10 @@
 {% if user %}
 {% set u_role = 'Master Admin' if user.is_master_admin() else ('Operator' if user.is_operator() else 'Viewer') %}
+<button type="button" id="topbarActivityBtn" onclick="toggleActivityConsole()" class="noc-topbar-activity-btn" title="Buka/Tutup Activity Console (Ctrl+`)">
+  <span id="topbarActivityDot" class="noc-activity-dot online"></span>
+  <span class="noc-activity-label">⚡ Activity</span>
+  <span id="topbarActivityErrBadge" class="badge badge-danger" style="display:none;font-size:10px;padding:1px 5px;line-height:1">0</span>
+</button>
 <div class="noc-topbar-user" id="topbarUserChip">
   <a href="/profile" class="noc-user-pill" title="Profil Akun: {{ user.username }} · Peran: {{ u_role }}">
     <span class="noc-user-avatar">{{ user.username[:1].upper() }}</span>

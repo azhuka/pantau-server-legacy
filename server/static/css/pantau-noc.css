@@ -1069,51 +1069,79 @@ table.noc-table-dense tbody tr:hover {
 }
 
 /* Penyelarasan Khusus Skala Tabel Dasbor Operasional (#dash-server-table) */
+#dash-server-table th {
+  padding: 10px 8px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  color: var(--dim, #8b949e) !important;
+}
+#dash-server-table td {
+  padding: 10px 8px !important;
+  font-size: 13px !important;
+  vertical-align: middle !important;
+}
 #dash-server-table .col-dash-server strong {
-  font-size: 13.5px !important;
-  font-weight: 600 !important;
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+  color: var(--text-bright, #ffffff) !important;
 }
 #dash-server-table .col-dash-server .dot {
-  width: 8px !important;
-  height: 8px !important;
+  width: 9px !important;
+  height: 9px !important;
+  flex-shrink: 0;
 }
 #dash-server-table .col-dash-status .badge {
-  font-size: 10.5px !important;
-  padding: 2.5px 7px !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
   font-weight: 700 !important;
   letter-spacing: 0.3px !important;
   border-radius: 4px !important;
 }
+#dash-server-table .col-dash-tier .badge {
+  padding: 3px 6px !important;
+  border-radius: 4px !important;
+}
+#dash-server-table .col-dash-tier .badge svg {
+  width: 13px !important;
+  height: 13px !important;
+}
 #dash-server-table .tbl-plat-wrap .badge {
   font-size: 10px !important;
-  padding: 2px 6px !important;
-  font-weight: 600 !important;
+  padding: 2.5px 6px !important;
+  font-weight: 700 !important;
   border-radius: 4px !important;
 }
 #dash-server-table .tbl-ip-wrap {
-  font-size: 11.5px !important;
+  font-size: 12px !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-  opacity: 0.9;
+  opacity: 0.95;
 }
 #dash-server-table .col-dash-uptime {
   font-size: 12.5px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
 }
 #dash-server-table .tbl-metric-box strong {
   font-size: 13px !important;
-  min-width: 48px !important;
+  min-width: 44px !important;
+  font-weight: 700 !important;
 }
 #dash-server-table .meter-led-track {
   width: 72px !important;
   height: 13px !important;
   gap: 2px !important;
-  padding: 2px !important;
+  padding: 1.5px !important;
 }
 #dash-server-table .col-dash-svc {
   font-size: 13px !important;
+  font-weight: 600 !important;
 }
 #dash-server-table .col-dash-prob .badge,
 #dash-server-table .col-dash-prob span {
   font-size: 11px !important;
+  padding: 2.5px 7px !important;
+  font-weight: 700 !important;
 }
 
 /* Mode Kompak Dasbor Operasional */
@@ -1679,60 +1707,85 @@ tr.is-disabled > td:not(.col-act) {
    Proporsional, Adaptif, dan Presisi terhadap Zoom Browser (100% - 175%)
    ============================================================================= */
 #dash-server-table {
-  width: 100%;
+  width: 100% !important;
   margin: 0;
   border-collapse: collapse;
   table-layout: auto;
 }
 
-/* Kolom Snug: Mengunci Kolom Badge, Status, Waktu, dan Indikator agar pas konten */
+/* Kolom Snug: Mengunci Kolom Badge, Status, Waktu, dan Indikator */
 #dash-server-table th.col-dash-status,
-#dash-server-table td.col-dash-status,
+#dash-server-table td.col-dash-status {
+  width: 65px;
+  min-width: 65px;
+  white-space: nowrap !important;
+  text-align: center !important;
+  box-sizing: border-box;
+}
+
 #dash-server-table th.col-dash-tier,
-#dash-server-table td.col-dash-tier,
+#dash-server-table td.col-dash-tier {
+  width: 42px;
+  min-width: 42px;
+  white-space: nowrap !important;
+  text-align: center !important;
+  box-sizing: border-box;
+}
+
 #dash-server-table th.col-dash-plat-ip,
-#dash-server-table td.col-dash-plat-ip,
+#dash-server-table td.col-dash-plat-ip {
+  width: 125px;
+  min-width: 118px;
+  white-space: nowrap !important;
+  text-align: left !important;
+  box-sizing: border-box;
+}
+
 #dash-server-table th.col-dash-uptime,
-#dash-server-table td.col-dash-uptime,
+#dash-server-table td.col-dash-uptime {
+  width: 72px;
+  min-width: 68px;
+  white-space: nowrap !important;
+  text-align: center !important;
+  box-sizing: border-box;
+}
+
 #dash-server-table th.col-dash-svc,
-#dash-server-table td.col-dash-svc,
+#dash-server-table td.col-dash-svc {
+  width: 58px;
+  min-width: 52px;
+  white-space: nowrap !important;
+  text-align: center !important;
+  box-sizing: border-box;
+}
+
 #dash-server-table th.col-dash-prob,
 #dash-server-table td.col-dash-prob {
-  width: 1% !important;
+  width: 70px;
+  min-width: 65px;
   white-space: nowrap !important;
+  text-align: center !important;
   box-sizing: border-box;
 }
 
-/* Kolom Dinamis Berbobot: Menyerap Sisa Ruang Layar Secara Merata */
+/* Kolom Server: Menyerap Ruang Dinamis dengan Batas Minimum yang Tegas */
 #dash-server-table th.col-dash-server,
 #dash-server-table td.col-dash-server {
-  width: 16% !important;
-  min-width: 130px !important;
-  max-width: 240px !important;
+  min-width: 125px !important;
   white-space: nowrap !important;
+  text-align: left !important;
   box-sizing: border-box;
 }
 
+/* Kolom Metrik Hardware: Bobot Ramping Presisi (Anti Overflow & Anti Horizontal Scroll) */
 #dash-server-table th.col-dash-cpu,
-#dash-server-table td.col-dash-cpu {
-  width: 25% !important;
-  min-width: 110px !important;
-  text-align: center !important;
-  box-sizing: border-box;
-}
-
+#dash-server-table td.col-dash-cpu,
 #dash-server-table th.col-dash-ram,
-#dash-server-table td.col-dash-ram {
-  width: 28% !important;
-  min-width: 130px !important;
-  text-align: center !important;
-  box-sizing: border-box;
-}
-
+#dash-server-table td.col-dash-ram,
 #dash-server-table th.col-dash-disk,
 #dash-server-table td.col-dash-disk {
-  width: 29% !important;
-  min-width: 145px !important;
+  width: 118px !important;
+  min-width: 108px !important;
   text-align: center !important;
   box-sizing: border-box;
 }
@@ -1756,6 +1809,46 @@ tr.is-disabled > td:not(.col-act) {
 #dash-server-table th.col-dash-plat-ip,
 #dash-server-table td.col-dash-plat-ip {
   text-align: left !important;
+}
+
+/* Responsivitas Dinamis Zoom 125% - 150% (Viewport Efektif <= 1360px): Bebas Scroll Horizontal */
+@media (max-width: 1360px) {
+  #dash-server-table th,
+  #dash-server-table td {
+    padding: 8px 5px !important;
+  }
+  #dash-server-table th.col-dash-server,
+  #dash-server-table td.col-dash-server {
+    min-width: 120px !important;
+  }
+  #dash-server-table .col-dash-server strong {
+    font-size: 13.5px !important;
+  }
+  #dash-server-table th.col-dash-plat-ip,
+  #dash-server-table td.col-dash-plat-ip {
+    width: 120px !important;
+    min-width: 115px !important;
+  }
+  #dash-server-table .tbl-ip-wrap {
+    font-size: 11px !important;
+  }
+  #dash-server-table th.col-dash-cpu,
+  #dash-server-table td.col-dash-cpu,
+  #dash-server-table th.col-dash-ram,
+  #dash-server-table td.col-dash-ram,
+  #dash-server-table th.col-dash-disk,
+  #dash-server-table td.col-dash-disk {
+    width: 112px !important;
+    min-width: 105px !important;
+  }
+  #dash-server-table .meter-led-track {
+    width: 60px !important;
+    height: 12px !important;
+  }
+  #dash-server-table .tbl-metric-box strong {
+    font-size: 12px !important;
+    min-width: 40px !important;
+  }
 }
 
 /* Mode Kompak (Ultra-Slim 1 Baris) */
@@ -2565,25 +2658,55 @@ body.show-alert-banner .noc-global-topbar {
   border-collapse: collapse;
   font-size: 11.5px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  table-layout: fixed;
 }
 
 .activity-table thead {
-  position: sticky;
-  top: 0;
-  background: #161b22 !important;
-  border-bottom: 1px solid #30363d !important;
-  z-index: 2;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
 }
 
+.activity-table thead th,
 .activity-table th {
-  padding: 6px 10px !important;
-  text-align: left;
+  position: sticky !important;
+  top: 0 !important;
+  background: #161b22 !important;
   color: #8b949e !important;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   border-bottom: 1px solid #30363d !important;
+  box-shadow: 0 1px 0 #30363d !important;
+  z-index: 10 !important;
+  padding: 7px 10px !important;
+}
+
+/* Sidebar Collapsed: Dot Aktivitas Wajib Hilang Bersih */
+body.sb-collapsed #nav-activity-dot,
+body.sb-collapsed .sb-act-dot,
+body.sb-collapsed #nav-btn-activity .sb-act-dot {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Penyelarasan Skala KPI Banner Dasbor */
+.dash-kpi-grid #dash-tot-cnt {
+  font-size: 22px !important;
+  font-weight: 800 !important;
+}
+.dash-kpi-grid .zbx-sev-count {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+.dash-kpi-grid .zbx-sev-label {
+  font-size: 9.5px !important;
+  font-weight: 700 !important;
+}
+.dash-kpi-grid .dash-clock-digits {
+  font-size: 18px !important;
 }
 
 .activity-table td {
