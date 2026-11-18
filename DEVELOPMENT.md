@@ -354,6 +354,11 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.23
+
+- In-App Activity Console (ADR-0030): Konsol telemetri runtime real-time via SSE, in-memory ring buffer, sensor kredensial (redaction filter), filter multi-level, live pill, dan pintasan Ctrl+`.\n- Public Status Page (ADR-0038): Halaman status mandiri /status tanpa login, masking data total, visual bar ketersediaan 90 hari interaktif, dark/light mode, cache ETag, dan token bucket rate limiter.
+
+
 ## Versi 4.11.22
 
 - Storage Triage Forensics & Safe Reclaim (ADR-0039): Level-1 space hogs, ghost files, runaway files, in-place log truncation, dan katalog safe reclaim terkurasi.\n- Root Cause Excerpt (ADR-0021): Cuplikan log journalctl otomatis untuk unit yang failed pada modal rincian insiden.

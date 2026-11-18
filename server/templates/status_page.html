@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ brand.org_name or 'Pantau Server NOC' }} - Status Operasional Sistem</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #131b2e;
+      --card-border: #1e293b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent: #38bdf8;
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.12);
+      --warning: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.12);
+      --danger: #ef4444;
+      --danger-bg: rgba(239, 68, 68, 0.12);
+      --bar-empty: #334155;
+      --tooltip-bg: #1e293b;
+      --tooltip-text: #f8fafc;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #94a3b8;
+      --accent: #0284c7;
+      --success: #059669;
+      --success-bg: rgba(5, 150, 105, 0.1);
+      --warning: #d97706;
+      --warning-bg: rgba(217, 119, 6, 0.1);
+      --danger: #dc2626;
+      --danger-bg: rgba(220, 38, 38, 0.1);
+      --bar-empty: #e2e8f0;
+      --tooltip-bg: #0f172a;
+      --tooltip-text: #ffffff;
+      --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 880px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 8px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 1.2rem;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(56, 189, 248, 0.25);
+    }
+    .brand-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .brand-title h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
+    .brand-title p { font-size: 0.85rem; color: var(--text-muted); }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-dashboard {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-dashboard:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .theme-toggle-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .theme-toggle-btn:hover { color: var(--text-main); border-color: var(--accent); }
+
+    /* Global Status Banner */
+    .status-banner {
+      border-radius: 12px;
+      padding: 18px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: var(--shadow);
+      transition: all 0.3s ease;
+    }
+    .status-banner.operational {
+      background-color: var(--success-bg);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--success);
+    }
+    .status-banner.degraded {
+      background-color: var(--warning-bg);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: var(--warning);
+    }
+    .status-banner.major_outage {
+      background-color: var(--danger-bg);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: var(--danger);
+    }
+    .status-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .status-pulse-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: currentColor;
+      box-shadow: 0 0 10px currentColor;
+      display: inline-block;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .status-time {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    /* Active Incidents */
+    .incidents-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .active-incident-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-left: 4px solid var(--warning);
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: var(--shadow);
+    }
+    .active-incident-box.major_outage {
+      border-left-color: var(--danger);
+    }
+    .incident-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .incident-header h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .incident-badge {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--warning-bg);
+      color: var(--warning);
+    }
+    .incident-badge.major_outage {
+      background: var(--danger-bg);
+      color: var(--danger);
+    }
+    .incident-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-top: 1px solid var(--card-border);
+      padding-top: 10px;
+    }
+    .timeline-item {
+      font-size: 0.88rem;
+    }
+    .timeline-msg {
+      color: var(--text-main);
+      margin-top: 2px;
+    }
+    .timeline-time {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    /* Service Groups */
+    .service-group {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: var(--shadow);
+    }
+    .group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 10px;
+    }
+    .group-header h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .target-list {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .target-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .target-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.95rem;
+    }
+    .target-name {
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .target-status-label {
+      font-size: 0.82rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .target-status-label.operational { color: var(--success); }
+    .target-status-label.degraded { color: var(--warning); }
+    .target-status-label.outage { color: var(--danger); }
+
+    /* Uptime Bars 90 Days */
+    .uptime-bar-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .uptime-bars-container {
+      display: flex;
+      gap: 2.5px;
+      height: 32px;
+      align-items: stretch;
+      width: 100%;
+    }
+    .bar-day {
+      flex: 1;
+      border-radius: 2px;
+      background-color: var(--success);
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+      min-width: 2px;
+    }
+    .bar-day:hover {
+      transform: scaleY(1.2);
+      opacity: 0.85;
+      z-index: 10;
+    }
+    .bar-day.degraded { background-color: var(--warning); }
+    .bar-day.outage { background-color: var(--danger); }
+    .bar-day.empty { background-color: var(--bar-empty); }
+
+    .uptime-range-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.74rem;
+      color: var(--text-dim);
+    }
+    .uptime-score {
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* Tooltip */
+    #status-tooltip {
+      position: absolute;
+      background: var(--tooltip-bg);
+      color: var(--tooltip-text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      pointer-events: none;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      z-index: 1000;
+      display: none;
+      transform: translate(-50%, -100%);
+      white-space: nowrap;
+      margin-top: -8px;
+    }
+    #status-tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: var(--tooltip-bg) transparent transparent transparent;
+    }
+
+    /* Footer */
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 16px;
+      border-top: 1px solid var(--card-border);
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* Skeleton Loading */
+    .skeleton {
+      background: linear-gradient(90deg, var(--card-border) 25%, var(--card-bg) 50%, var(--card-border) 75%);
+      background-size: 200% 100%;
+      animation: loading 1.5s infinite;
+      border-radius: 4px;
+    }
+    @keyframes loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-logo">
+          {% if brand.logo_url %}
+            <img src="{{ brand.logo_url }}" alt="Logo">
+          {% else %}
+            ⚡
+          {% endif %}
+        </div>
+        <div class="brand-title">
+          <h1 id="page-brand-name">{{ brand.org_name or 'Pantau Server NOC' }}</h1>
+          <p id="page-brand-desc">{{ brand.org_unit or 'Status Operasional & Ketersediaan Infrastruktur' }}</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <a href="/" class="btn-dashboard" title="Buka Dashboard Internal">
+          <span>🖥 Dashboard NOC</span>
+        </a>
+        <button class="theme-toggle-btn" id="theme-btn" aria-label="Ganti Tema" title="Ganti Tema Tampilan">
+          <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Global Status Banner -->
+    <div id="status-banner" class="status-banner operational">
+      <div class="status-title">
+        <span class="status-pulse-dot"></span>
+        <span id="status-desc">Memeriksa status ketersediaan sistem…</span>
+      </div>
+      <div class="status-time">
+        Pembaruan: <span id="last-updated">-</span>
+      </div>
+    </div>
+
+    <!-- Active Incidents -->
+    <div id="incident-container" class="incidents-container" style="display: none;"></div>
+
+    <!-- Target Groups -->
+    <div id="groups-container" style="display: flex; flex-direction: column; gap: 20px;">
+      <!-- Skeleton Loaders -->
+      <div class="service-group">
+        <div class="group-header">
+          <div class="skeleton" style="width: 140px; height: 22px;"></div>
+        </div>
+        <div class="target-list">
+          <div class="target-row">
+            <div class="target-top">
+              <div class="skeleton" style="width: 180px; height: 18px;"></div>
+              <div class="skeleton" style="width: 90px; height: 18px;"></div>
+            </div>
+            <div class="skeleton" style="width: 100%; height: 32px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <div>&copy; 2026 Pantau-Server &bull; Sistem Monitoring NOC Terpadu</div>
+      <div>
+        <a href="javascript:void(0)" onclick="loadStatus(true)">Perbarui Sekarang</a>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Floating Tooltip -->
+  <div id="status-tooltip"></div>
+
+  <script>
+    // Theme Management
+    const themeBtn = document.getElementById("theme-btn");
+    const themeIcon = document.getElementById("theme-icon");
+
+    function initTheme() {
+      const saved = localStorage.getItem("pantau_theme");
+      if (saved) {
+        document.documentElement.setAttribute("data-theme", saved);
+        updateThemeIcon(saved);
+      } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+        document.documentElement.setAttribute("data-theme", "light");
+        updateThemeIcon("light");
+      }
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute("data-theme") || "dark";
+      const next = current === "light" ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", next);
+      localStorage.setItem("pantau_theme", next);
+      updateThemeIcon(next);
+    }
+
+    function updateThemeIcon(theme) {
+      if (theme === "light") {
+        themeIcon.innerHTML = `<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>`;
+      } else {
+        themeIcon.innerHTML = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>`;
+      }
+    }
+
+    themeBtn.addEventListener("click", toggleTheme);
+    initTheme();
+
+    // Tooltip Handling
+    const tooltip = document.getElementById("status-tooltip");
+
+    function showBarTooltip(e) {
+      const date = e.target.dataset.date;
+      const uptime = e.target.dataset.uptime;
+      const status = e.target.dataset.status;
+
+      let statusText = "Operasional Penuh";
+      if (status === "degraded") statusText = "Degradasi Performa";
+      if (status === "outage") statusText = "Kendala Ketersediaan";
+
+      tooltip.innerHTML = `<strong>${date}</strong><br>${statusText} &bull; ${uptime}%`;
+      tooltip.style.display = "block";
+
+      const rect = e.target.getBoundingClientRect();
+      tooltip.style.left = `${rect.left + rect.width / 2}px`;
+      tooltip.style.top = `${rect.top + window.scrollY}px`;
+    }
+
+    function hideBarTooltip() {
+      tooltip.style.display = "none";
+    }
+
+    // Load Data
+    async function loadStatus(force) {
+      try {
+        const url = force ? "/api/status-page/summary?refresh=1" : "/api/status-page/summary";
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error("Gagal mengambil status");
+        const data = await res.json();
+        renderStatus(data);
+      } catch (err) {
+        console.error("Gagal memuat status:", err);
+      }
+    }
+
+    function renderStatus(data) {
+      if (!data) return;
+
+      // Update Branding
+      if (data.brand) {
+        if (data.brand.name) document.getElementById("page-brand-name").textContent = data.brand.name;
+        if (data.brand.description) document.getElementById("page-brand-desc").textContent = data.brand.description;
+      }
+
+      // Update Global Banner
+      const banner = document.getElementById("status-banner");
+      const bannerText = document.getElementById("status-desc");
+      const indicator = data.status || "operational";
+      const desc = data.status_description || "Semua Sistem Beroperasi Normal";
+
+      banner.className = `status-banner ${indicator}`;
+      bannerText.textContent = desc;
+      document.getElementById("last-updated").textContent = data.updated_at || new Date().toLocaleTimeString();
+
+      // Active Incidents
+      const incContainer = document.getElementById("incident-container");
+      incContainer.innerHTML = "";
+      if (data.active_incidents && data.active_incidents.length > 0) {
+        incContainer.style.display = "flex";
+        data.active_incidents.forEach(inc => {
+          const card = document.createElement("div");
+          card.className = `active-incident-box ${inc.impact}`;
+
+          let updatesHtml = "";
+          if (inc.updates && inc.updates.length > 0) {
+            updatesHtml = inc.updates.map(u => `
+              <div class="timeline-item">
+                <div class="timeline-msg"><strong>${escapeHtml(u.status)}:</strong> ${escapeHtml(u.message)}</div>
+                <div class="timeline-time">${new Date(u.created_at).toLocaleString()}</div>
+              </div>
+            `).join("");
+          }
+
+          card.innerHTML = `
+            <div class="incident-header">
+              <h3>${escapeHtml(inc.title)}</h3>
+              <span class="incident-badge ${inc.impact}">${escapeHtml(inc.impact === 'major_outage' ? 'Kendala Kritis' : 'Performa Menurun')}</span>
+            </div>
+            <div class="incident-timeline">
+              ${updatesHtml}
+            </div>
+          `;
+          incContainer.appendChild(card);
+        });
+      } else {
+        incContainer.style.display = "none";
+      }
+
+      // Target Groups
+      const groupsContainer = document.getElementById("groups-container");
+      groupsContainer.innerHTML = "";
+
+      if (!data.targets || data.targets.length === 0) {
+        groupsContainer.innerHTML = `
+          <div class="service-group">
+            <div style="text-align:center;padding:24px;color:var(--text-dim);font-size:0.9rem">
+              Belum ada target server aktif yang terdaftar.
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Kelompokkan per group
+      const groups = {};
+      data.targets.forEach(t => {
+        const grp = t.group || "Armada Server";
+        if (!groups[grp]) groups[grp] = [];
+        groups[grp].push(t);
+      });
+
+      Object.keys(groups).forEach(grpName => {
+        const groupCard = document.createElement("div");
+        groupCard.className = "service-group";
+
+        const listDiv = document.createElement("div");
+        listDiv.className = "target-list";
+
+        groups[grpName].forEach(t => {
+          const row = document.createElement("div");
+          row.className = "target-row";
+
+          let statusLabel = "Operasional";
+          if (t.status === "degraded") statusLabel = "Performa Menurun";
+          if (t.status === "outage") statusLabel = "Kendala Ketersediaan";
+
+          row.innerHTML = `
+            <div class="target-top">
+              <span class="target-name">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                ${escapeHtml(t.name)}
+              </span>
+              <span class="target-status-label ${t.status}">
+                <span class="status-pulse-dot" style="width: 8px; height: 8px;"></span>
+                ${statusLabel}
+              </span>
+            </div>
+            <div class="uptime-bar-wrapper">
+              <div class="uptime-bars-container" id="bars-${t.id}"></div>
+              <div class="uptime-range-labels">
+                <span>90 hari lalu</span>
+                <span class="uptime-score">${(t.uptime_90d || 100).toFixed(2)}% ketersediaan</span>
+                <span>Hari ini</span>
+              </div>
+            </div>
+          `;
+
+          const barsEl = row.querySelector(`#bars-${t.id}`);
+          if (t.daily_history) {
+            t.daily_history.forEach(day => {
+              const bar = document.createElement("div");
+              bar.className = `bar-day ${day.status}`;
+              bar.dataset.date = day.date;
+              bar.dataset.uptime = day.uptime;
+              bar.dataset.status = day.status;
+
+              bar.addEventListener("mouseenter", showBarTooltip);
+              bar.addEventListener("mouseleave", hideBarTooltip);
+              barsEl.appendChild(bar);
+            });
+          }
+
+          listDiv.appendChild(row);
+        });
+
+        groupCard.innerHTML = `
+          <div class="group-header">
+            <h2>${escapeHtml(grpName)}</h2>
+          </div>
+        `;
+        groupCard.appendChild(listDiv);
+        groupsContainer.appendChild(groupCard);
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    // Initial load
+    loadStatus();
+    // Auto refresh every 45 detik
+    setInterval(() => loadStatus(false), 45000);
+  </script>
+</body>
+</html>
