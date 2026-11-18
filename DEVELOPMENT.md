@@ -354,6 +354,11 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.20
+
+### Fitur & Standarisasi UI/UX\n- **Adopsi Standar Workspace Modal & Action Dialog:**\n  - Menstandarisasikan dimensi kontainer dan top-anchored alignment pada seluruh modal antarmuka.\n  - Mengeliminasi efek layout shift saat berpindah tab atau memuat pesan validasi.\n- **Dynamic LIFO Modal Stacking:**\n  - Penanganan Escape berjenjang dengan pelacakan tumpukan modal aktif secara dinamis.\n  - Integrasi berkas arsitektur tunggal CONTEXT.md dan AGENTS.md.
+
+
 ## Versi 4.11.19
 
 ## [4.11.19] - 2026-11-19

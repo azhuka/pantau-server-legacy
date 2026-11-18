@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token }}">
 <title>{% block title %}Pantau Server{% endblock %}</title>
-<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.19' }}">
+<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.20' }}">
 <style id="noc-act-dropdown-anti-cache">
   /* Override Mutlak Anti-Cache untuk Tombol Dropdown Tindakan yang Non-Aktif (Disabled) */
   .noc-act-dropdown-item:disabled,
@@ -3068,7 +3068,7 @@ body.show-alert-banner .main{padding-top:72px}
   </nav>
   <div class="sidebar-footer">
     <div class="sb-footer-brand">Pantau Server</div>
-    <div class="sb-footer-ver">v{{ app_version or '4.11.19' }}</div>
+    <div class="sb-footer-ver">v{{ app_version or '4.11.20' }}</div>
     <div class="sb-clock-card" id="sbClockBox" 
          data-server-tz="{{ server_tz or 'WITA' }}" 
          data-server-offset="{{ server_tz_offset if server_tz_offset is defined else 480 }}"
@@ -4631,6 +4631,63 @@ async function unignoreProblem(target, onDone) {
   }
 }
 
+// =============================================================================
+// NOC MODAL STACK ENGINE (STANDAR ADR-0007 / ADR-0026)
+// Dynamic Z-Index Stacking (LIFO) & Hierarchical Escape Dismissal
+// =============================================================================
+const openModalStack = [];
+
+function registerModalOpen(modalEl, closeFn) {
+  if (!modalEl || !(modalEl instanceof HTMLElement)) return;
+  const idx = openModalStack.findIndex(entry => entry.el === modalEl);
+  if (idx !== -1) openModalStack.splice(idx, 1);
+  const baseZ = 10000;
+  const newZ = baseZ + (openModalStack.length + 1) * 10;
+  modalEl.style.zIndex = newZ;
+  openModalStack.push({ el: modalEl, closeFn: closeFn });
+  document.body.classList.add('modal-open');
+}
+
+function registerModalClose(modalEl) {
+  if (!modalEl || !(modalEl instanceof HTMLElement)) return;
+  const idx = openModalStack.findIndex(entry => entry.el === modalEl);
+  if (idx !== -1) openModalStack.splice(idx, 1);
+  if (openModalStack.length === 0) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+// Universal DOM Observer for dynamic modal detection
+if (typeof window !== 'undefined' && window.MutationObserver) {
+  const modalObserver = new MutationObserver(mutations => {
+    for (const m of mutations) {
+      const target = m.target;
+      if (!target || !(target instanceof HTMLElement)) continue;
+      const isModal = target.classList.contains('modal-backdrop') ||
+                      target.classList.contains('probe-modal-backdrop') ||
+                      target.classList.contains('noc-modal-backdrop') ||
+                      target.classList.contains('fm-modal-backdrop') ||
+                      target.classList.contains('workspace-modal') ||
+                      (target.id && (target.id.includes('modal') || target.id.includes('Modal') || target.id.includes('Backdrop')));
+      if (!isModal) continue;
+      const computed = window.getComputedStyle(target);
+      const isVisible = computed.display !== 'none' && computed.visibility !== 'hidden' && computed.opacity !== '0';
+      if (isVisible) {
+        registerModalOpen(target);
+      } else {
+        registerModalClose(target);
+      }
+    }
+  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      modalObserver.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style', 'class'] });
+    });
+  } else {
+    modalObserver.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style', 'class'] });
+  }
+}
+
 // Universal Modal Dismissal Controller (Escape key & backdrop click)
 function dismissActiveModal(targetModal) {
   const modalClosers = [
@@ -4674,25 +4731,42 @@ function dismissActiveModal(targetModal) {
   ];
 
   if (targetModal) {
+    registerModalClose(targetModal);
     const entry = modalClosers.find(c => c.id === targetModal.id);
     if (entry && entry.fn()) return true;
-    const closeBtn = targetModal.querySelector('.modal-close, .probe-modal-close, button[onclick*="close"], button[onclick*="Close"], .btn-ghost');
+    const closeBtn = targetModal.querySelector('.modal-close, .probe-modal-close, .noc-modal-close, button[onclick*="close"], button[onclick*="Close"], .btn-ghost');
     if (closeBtn) { closeBtn.click(); return true; }
     targetModal.style.display = 'none';
     return true;
   }
 
-  // Cari modal terbuka dengan prioritas
+  // 1. Prioritas Utama: LIFO Modal Stack (Tutup modal yang paling atas lebih dulu)
+  while (openModalStack.length > 0) {
+    const top = openModalStack.pop();
+    if (top && top.el && top.el.style.display !== 'none' && top.el.style.display !== '') {
+      registerModalClose(top.el);
+      const entry = modalClosers.find(c => c.id === top.el.id);
+      if (entry && entry.fn()) return true;
+      if (typeof top.closeFn === 'function' && top.closeFn()) return true;
+      const closeBtn = top.el.querySelector('.modal-close, .probe-modal-close, .noc-modal-close, button[onclick*="close"], button[onclick*="Close"], .btn-ghost');
+      if (closeBtn) { closeBtn.click(); return true; }
+      top.el.style.display = 'none';
+      return true;
+    }
+  }
+
+  // 2. Fallback: Telusuri modal terdaftar jika ada yang belum terindeks stack
   for (const item of modalClosers) {
     const el = document.getElementById(item.id);
     if (el && el.style.display !== 'none' && el.style.display !== '') {
+      registerModalClose(el);
       if (item.fn()) return true;
       el.style.display = 'none';
       return true;
     }
   }
 
-  // Fallback generik untuk elemen fixed/modal lain
+  // 3. Fallback generik untuk elemen fixed/modal lain
   const openModals = Array.from(document.querySelectorAll('.modal-backdrop, .modal, .probe-modal-backdrop, .fm-modal-backdrop, [id*="modal"], [id*="Modal"], [id*="Backdrop"]'))
     .filter(m => {
       if (!m || m.tagName === 'BUTTON' || m.tagName === 'INPUT' || m.tagName === 'A' || m.tagName === 'SPAN') return false;
@@ -4702,7 +4776,8 @@ function dismissActiveModal(targetModal) {
 
   if (openModals.length > 0) {
     const topModal = openModals[openModals.length - 1];
-    const closeBtn = topModal.querySelector('.modal-close, .probe-modal-close, button[onclick*="close"], button[onclick*="Close"], .btn-ghost');
+    registerModalClose(topModal);
+    const closeBtn = topModal.querySelector('.modal-close, .probe-modal-close, .noc-modal-close, button[onclick*="close"], button[onclick*="Close"], .btn-ghost');
     if (closeBtn) closeBtn.click();
     else topModal.style.display = 'none';
     return true;
