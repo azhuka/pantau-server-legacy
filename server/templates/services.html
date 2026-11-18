@@ -12243,31 +12243,39 @@ function renderSys(data) {
     }
   }
 
-  const accBadge = document.getElementById('acc-count-badge');
   const sessCount = data.active_sessions_count || 0;
-  if (accBadge) {
-    const qAcc = (document.getElementById('acc-search-input')?.value || '').trim();
-    if (_currentAccCategory !== 'all' || qAcc) {
-      // Biarkan searchUsersTable memperbarui badge sesuai hasil filter
-    } else {
-      let bText = acc.length + (acc.length === 1 ? ' User' : ' Users');
-      if (sessCount > 0) {
-        bText += isEn ? (' · ' + sessCount + ' Active Sessions (SSH)') : (' · ' + sessCount + ' Sesi Aktif (SSH)');
+
+  if (Array.isArray(data.accounts)) {
+    const accTotal = data.accounts.length;
+    const accBadge = document.getElementById('acc-count-badge');
+    if (accBadge) {
+      const qAcc = (document.getElementById('acc-search-input')?.value || '').trim();
+      if (_currentAccCategory !== 'all' || qAcc) {
+        // Biarkan searchUsersTable memperbarui badge sesuai hasil filter
+      } else {
+        let bText = accTotal + (accTotal === 1 ? ' User' : ' Users');
+        if (sessCount > 0) {
+          bText += isEn ? (' · ' + sessCount + ' Active Sessions (SSH)') : (' · ' + sessCount + ' Sesi Aktif (SSH)');
+        }
+        accBadge.textContent = bText;
       }
-      accBadge.textContent = bText;
     }
+    const badgeUsersCount = document.getElementById('badge-users-count');
+    if (badgeUsersCount) badgeUsersCount.textContent = accTotal;
   }
-  const badgeUsersCount = document.getElementById('badge-users-count');
-  if (badgeUsersCount) badgeUsersCount.textContent = acc.length;
-  const badgeGroupsCount = document.getElementById('badge-groups-count');
-  if (badgeGroupsCount) badgeGroupsCount.textContent = grps.length;
-  const groupsCountBadge = document.getElementById('groups-count-badge');
-  if (groupsCountBadge) {
-    const qGrp = (document.getElementById('group-search-input')?.value || '').trim();
-    if (_currentGroupCategory !== 'all' || qGrp) {
-      // Biarkan searchGroupsTable memperbarui badge sesuai hasil filter
-    } else {
-      groupsCountBadge.textContent = grps.length + (isEn ? ' Groups' : ' Grup');
+
+  if (Array.isArray(data.system_groups)) {
+    const grpsTotal = data.system_groups.length;
+    const badgeGroupsCount = document.getElementById('badge-groups-count');
+    if (badgeGroupsCount) badgeGroupsCount.textContent = grpsTotal;
+    const groupsCountBadge = document.getElementById('groups-count-badge');
+    if (groupsCountBadge) {
+      const qGrp = (document.getElementById('group-search-input')?.value || '').trim();
+      if (_currentGroupCategory !== 'all' || qGrp) {
+        // Biarkan searchGroupsTable memperbarui badge sesuai hasil filter
+      } else {
+        groupsCountBadge.textContent = grpsTotal + (isEn ? ' Groups' : ' Grup');
+      }
     }
   }
 

@@ -1299,7 +1299,7 @@ th.col-title-info, td.col-title-info { min-width: 180px; }
 }
 .cell-mono-sub {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-  font-size: 8.5px !important;
+  font-size: 10px !important;
   color: var(--dim, #94a3b8) !important;
   font-variant-numeric: tabular-nums !important;
   line-height: 1.25 !important;
@@ -1309,7 +1309,7 @@ th.col-title-info, td.col-title-info { min-width: 180px; }
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
-  font-size: 8.5px !important;
+  font-size: 10px !important;
   color: var(--dim, #94a3b8) !important;
   line-height: 1.25 !important;
 }
@@ -1326,12 +1326,64 @@ th.col-title-info, td.col-title-info { min-width: 180px; }
   white-space: nowrap !important;
 }
 .cell-badge {
-  font-size: 7.5px !important;
-  padding: 0.5px 4px !important;
+  font-size: 9.5px !important;
+  padding: 1.5px 5px !important;
   font-weight: 700 !important;
   border-radius: 3px !important;
   letter-spacing: 0.2px !important;
   line-height: 1.2 !important;
+}
+
+/* =============================================================================
+   SASIS DINAMIS TABEL DAFTAR SERVER (#servers-table)
+   ============================================================================= */
+#servers-table th {
+  padding: 10px 8px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase !important;
+  color: var(--dim, #8b949e) !important;
+}
+#servers-table td {
+  padding: 9px 8px !important;
+  font-size: 12.5px !important;
+  vertical-align: middle !important;
+}
+#servers-table .col-srv strong {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--text-bright, #ffffff) !important;
+}
+#servers-table .copyable-ip {
+  font-size: 12px !important;
+}
+#servers-table .badge {
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+}
+
+/* Responsivitas Dinamis Zoom 125% - 150% (Viewport <= 1360px): Bebas Scroll Horizontal */
+@media (max-width: 1360px) {
+  #servers-table th.col-cpu,
+  #servers-table td.col-cpu,
+  #servers-table th.col-os,
+  #servers-table td.col-os,
+  #servers-table th.col-tag,
+  #servers-table td.col-tag {
+    display: none !important;
+  }
+  #servers-table th,
+  #servers-table td {
+    padding: 8px 6px !important;
+  }
+  #servers-table .col-plat {
+    max-width: 130px !important;
+  }
+  #servers-table .col-plat .cell-trunc-sub {
+    max-width: 120px !important;
+  }
 }
 [title] {
   cursor: help;
