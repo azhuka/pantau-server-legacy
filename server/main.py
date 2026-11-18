@@ -36,6 +36,7 @@ try:
         servers,
         services,
         settings as settings_router,
+        status_page,
         system_ops,
         terminal,
         users,
@@ -59,6 +60,7 @@ except ImportError:
         servers,
         services,
         settings as settings_router,
+        status_page,
         system_ops,
         terminal,
         users,
@@ -270,4 +272,5 @@ app.include_router(audit.router)
 app.include_router(system_ops.router)
 app.include_router(users.router)
 app.include_router(settings_router.router)
+app.include_router(status_page.router)
 app.include_router(api_agent.router)

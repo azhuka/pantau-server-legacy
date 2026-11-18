@@ -2334,6 +2334,22 @@ def sync_server_problems(db, srv, instances, keep_history=40, now=None):
                 last_active_at=active,
                 context=p.get("context"),
             )
+            try:
+                from services.activity_stream import broadcast_activity
+            except ImportError:
+                try:
+                    from server.services.activity_stream import broadcast_activity
+                except ImportError:
+                    broadcast_activity = None
+            if broadcast_activity:
+                prob_lvl = "ERROR" if p.get("severity") in ("danger", "average") else "WARN"
+                broadcast_activity(
+                    level=prob_lvl,
+                    module="PROBLEM",
+                    host=srv.hostname,
+                    message=f"[{p.get('severity', 'info').upper()}] {p.get('message', '')}",
+                    details=p.get("tip") or "",
+                )
             if target_ignored:
                 new_row.is_ignored = 1
                 new_row.ignored_until = target_ignored_until

@@ -36,6 +36,40 @@ def record_audit(
         )
     )
 
+    try:
+        from services.activity_stream import broadcast_activity
+    except ImportError:
+        try:
+            from server.services.activity_stream import broadcast_activity
+        except ImportError:
+            broadcast_activity = None
+
+    if broadcast_activity:
+        srv_name = "pusat"
+        if server_id:
+            try:
+                s_obj = db.query(Server).filter(Server.id == server_id).first()
+                if s_obj and s_obj.hostname:
+                    srv_name = s_obj.hostname
+            except Exception:
+                pass
+        lvl = "INFO"
+        if result and any(w in result.lower() for w in ("gagal", "error", "failed", "danger")):
+            lvl = "ERROR"
+        elif result and any(w in result.lower() for w in ("warn", "peringatan")):
+            lvl = "WARN"
+
+        msg = f"{username} -> {action}"
+        if target:
+            msg += f" {target}"
+        broadcast_activity(
+            level=lvl,
+            module="AUDIT",
+            host=srv_name,
+            message=msg,
+            details=result or "",
+        )
+
 
 _audit = record_audit
 

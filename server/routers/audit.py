@@ -257,3 +257,35 @@ def audit_page(
             "st_label": st_label,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# IN-APP ACTIVITY CONSOLE & LIVE EVENT STREAM (ADR-0030)
+# ---------------------------------------------------------------------------
+from fastapi.responses import StreamingResponse
+
+try:
+    from services.activity_stream import subscribe_activities, get_recent_activities
+except ImportError:
+    from server.services.activity_stream import subscribe_activities, get_recent_activities
+
+
+@router.get("/api/activity/stream")
+async def api_activity_stream(user: User = Depends(require_user)):
+    """SSE endpoint untuk langganan event telemetri operasional real-time."""
+    return StreamingResponse(
+        subscribe_activities(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/api/activity/recent")
+def api_activity_recent(limit: int = 50, user: User = Depends(require_user)):
+    """Mengambil 50 aktivitas terbaru dari in-memory ring buffer untuk bootstrap drawer."""
+    limit = max(5, min(limit, 100))
+    return {"activities": get_recent_activities(limit)}
