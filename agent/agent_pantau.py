@@ -489,7 +489,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.18"
+AGENT_VERSION = "4.11.19"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
@@ -5065,15 +5065,56 @@ def fetch_log_lines(unit: str, lines: int) -> str:
         ["journalctl", "-u", unit_clean, "-u", f"{unit_clean}.service", "-n", str(lines), "--no-pager", "-o", "short-iso"],
         timeout=30,
     )
-    if res and res.stdout.strip():
-        return res.stdout.rstrip()
+    out = (res.stdout.rstrip() if res else "")
+    if out and out.strip() != "-- No entries --":
+        return out
 
-    return f"[Log untuk {unit} tidak ditemukan di server ini]"
-    out = res.stdout.rstrip()
-    if not out:
-        msg = (res.stderr or "").strip()
-        return msg or f"[tidak ada entri untuk unit {unit}]"
-    return out
+    # 4a. Fallback Proses Journalctl (_COMM) jika unit systemd menggunakan nama proses berbeda
+    res_comm = _run_cmd(
+        ["journalctl", f"_COMM={unit_clean}", "-n", str(lines), "--no-pager", "-o", "short-iso"],
+        timeout=30,
+    )
+    out_comm = (res_comm.stdout.rstrip() if res_comm else "")
+    if out_comm and out_comm.strip() != "-- No entries --":
+        return out_comm
+
+    # 4b. Fallback Variasi Nama Unit / Alias Layanan Umum
+    variants = []
+    if unit_clean.endswith("d") and len(unit_clean) > 2:
+        variants.append(unit_clean[:-1])
+    else:
+        variants.append(unit_clean + "d")
+    if unit_clean.lower() in ("mysql", "mysqld"):
+        variants.extend(["mariadb", "mariadbd"])
+    elif unit_clean.lower() in ("mariadb", "mariadbd"):
+        variants.extend(["mysql", "mysqld"])
+    elif unit_clean.lower() in ("apache", "apache2"):
+        variants.extend(["httpd", "apache2"])
+    elif unit_clean.lower() == "httpd":
+        variants.extend(["apache2", "apache"])
+
+    for v in variants:
+        res_v = _run_cmd(
+            ["journalctl", "-u", v, "-u", f"{v}.service", "-n", str(lines), "--no-pager", "-o", "short-iso"],
+            timeout=20,
+        )
+        out_v = (res_v.stdout.rstrip() if res_v else "")
+        if out_v and out_v.strip() != "-- No entries --":
+            return out_v
+
+    # 4c. Fallback Berkas Log di /var/log jika ada kecocokan nama direktori atau file
+    if os.path.isdir("/var/log"):
+        for cand_dir in (f"/var/log/{unit_clean}", "/var/log"):
+            if os.path.isdir(cand_dir):
+                for fname in (f"{unit_clean}.log", "error.log", "access.log"):
+                    cand_path = os.path.join(cand_dir, fname)
+                    if os.path.isfile(cand_path):
+                        return _tail_file(cand_path, lines)
+
+    if out:
+        return out
+    msg = (res.stderr or "").strip() if res else ""
+    return msg or f"[Log untuk {unit} tidak ditemukan di server ini]"
 
 
 IGNORED_SHELL_BASE_COMMANDS = {

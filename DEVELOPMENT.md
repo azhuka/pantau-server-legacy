@@ -354,6 +354,19 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.19
+
+## [4.11.19] - 2026-11-19
+### Diperbaiki
+- **Fallback Log Journalctl Agnostik:** Mengatasi log kosong (-- No entries --) pada service yang nama unit systemd-nya berbeda dengan nama proses (seperti uvicorn, mysql, systemd-resolve) melalui kueri fallback _COMM dan variasi alias.
+- **Modal Log Layanan Dinamis:** Mengganti percabangan hardcode pada openServiceLogModal dengan pencocokan dinamis terhadap seluruh katalog berkas log nyata di host klien.
+- **Relasi Proses Layanan:** Meneruskan process_name dari tabel layanan ke antarmuka modal log untuk identifikasi unit systemd dan log berkas yang tepat.
+
+### Ditambahkan
+- **Pintasan Layar Penuh Modal Log:** Tombol Buka di Tab Logs pada header modal untuk beralih langsung ke konsol tab log utama.
+- **Sinkronisasi Telemetri Sumber Log:** Penyertaan available_logs pada endpoint background /api/servers/{sid}/system.
+
+
 ## Versi 4.11.18
 
 ## [4.11.18] - 2026-11-18

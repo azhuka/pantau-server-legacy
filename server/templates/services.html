@@ -2987,9 +2987,9 @@ div[style*="position: fixed"] .card {
           <span style="color:var(--dim)">—</span>
         {% endif %}
       </td>
-      <td class="col-act" id="act-{{ svc.id }}" data-sid="{{ server.id }}" data-svc="{{ svc.id }}" data-name="{{ svc.service_name }}" style="white-space:nowrap;text-align:center">
+      <td class="col-act" id="act-{{ svc.id }}" data-sid="{{ server.id }}" data-svc="{{ svc.id }}" data-name="{{ svc.service_name }}" data-process="{{ svc.process_name or '' }}" style="white-space:nowrap;text-align:center">
         {% if user.is_viewer() or not user.has_perm('can_services') %}
-          <button type="button" class="btn btn-ghost btn-sm" onclick='openServiceLogModal({{ svc.service_name|tojson }}, {{ (svc._status or "")|tojson }}, {{ (svc.port or "")|tojson }})' title="Buka konsol log kontekstual {{ svc.service_name }}" aria-label="Log">
+          <button type="button" class="btn btn-ghost btn-sm" onclick='openServiceLogModal({{ svc.service_name|tojson }}, {{ (svc._status or "")|tojson }}, {{ (svc.port or "")|tojson }}, null, {{ (svc.process_name or "")|tojson }})' title="Buka konsol log kontekstual {{ svc.service_name }}" aria-label="Log">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
           </button>
         {% else %}
@@ -3017,7 +3017,7 @@ div[style*="position: fixed"] .card {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect></svg>
                 <span>Hentikan Service{% if not is_up %} (Terhenti){% endif %}</span>
               </button>
-              <button type="button" class="noc-act-dropdown-item" onclick='openServiceLogModal({{ svc.service_name|tojson }}, {{ (svc._status or "")|tojson }}, {{ (svc.port or "")|tojson }})' title="Buka konsol log kontekstual {{ svc.service_name }}">
+              <button type="button" class="noc-act-dropdown-item" onclick='openServiceLogModal({{ svc.service_name|tojson }}, {{ (svc._status or "")|tojson }}, {{ (svc.port or "")|tojson }}, null, {{ (svc.process_name or "")|tojson }})' title="Buka konsol log kontekstual {{ svc.service_name }}">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                 <span>Lihat Log Service</span>
               </button>
@@ -4329,6 +4329,11 @@ div[style*="position: fixed"] .card {
         <!-- Unduh Log -->
         <button type="button" class="btn btn-ghost btn-sm btn-noc-icon" onclick="downloadSvcModalLog()" title="Unduh berkas log (.log)" aria-label="Unduh Log">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </button>
+
+        <!-- Tombol Buka di Tab Logs Penuh -->
+        <button type="button" class="btn btn-ghost btn-sm btn-noc-icon" onclick="openSvcModalInFullTab()" title="Buka di Tab Logs (Layar Penuh)" aria-label="Buka di Tab Logs">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
         </button>
 
         <!-- Tombol Tutup [×] -->
@@ -5808,11 +5813,12 @@ function triggerFastPoll() {
   setTimeout(runPolls, 12000);
 }
 
-function renderServiceActions(sid, svcId, name, status, isPending, problem, isServiceIgnored, pendingAction) {
+function renderServiceActions(sid, svcId, name, status, isPending, problem, isServiceIgnored, pendingAction, processName) {
   const isEn = (typeof currentLang !== 'undefined' && currentLang === 'en') || ((localStorage.getItem('app_lang') || 'id') === 'en');
   const svgLog = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>';
   const logTitle = isEn ? 'Open contextual logs for ' + name : 'Buka konsol log kontekstual ' + name;
-  const logBtn = '<button type="button" class="btn btn-ghost btn-sm" onclick="openServiceLogModal(\'' + escHtml(name) + '\', \'' + escHtml(status || '') + '\')" title="' + logTitle + '" aria-label="Log">' + svgLog + '</button>';
+  const procArg = processName ? `'${escHtml(processName)}'` : "''";
+  const logBtn = '<button type="button" class="btn btn-ghost btn-sm" onclick="openServiceLogModal(\'' + escHtml(name) + '\', \'' + escHtml(status || '') + '\', \'\', null, ' + procArg + ')" title="' + logTitle + '" aria-label="Log">' + svgLog + '</button>';
   if (IS_VIEWER || !CAN_SERVICES) return logBtn;
   const online = (typeof IS_ONLINE !== 'undefined') ? IS_ONLINE : true;
   
@@ -5862,7 +5868,7 @@ function renderServiceActions(sid, svcId, name, status, isPending, problem, isSe
   items += `<button type="button" class="noc-act-dropdown-item ${rstDis ? 'is-disabled' : ''}" ${rstDis ? `disabled style="${disStyle}" onclick="${noopClick}"` : `onclick="restartService(${sid}, ${svcId}, '${escHtml(name)}', this)"`} title="${rstTitle}">${svgRst} <span>${isEn ? 'Restart Service' : 'Restart Service'}</span></button>`;
   items += `<button type="button" class="noc-act-dropdown-item ${startDis ? 'is-disabled' : ''}" ${startDis ? `disabled style="${disStyle}" onclick="${noopClick}"` : `onclick="svcAction('start', ${sid}, ${svcId}, '${escHtml(name)}', this)"`} title="${startTitle}">${svgStart} <span>${isEn ? ('Start Service' + (isUp ? ' (Running)' : '')) : ('Nyalakan Service' + (isUp ? ' (Aktif)' : ''))}</span></button>`;
   items += `<button type="button" class="noc-act-dropdown-item ${stopDis ? 'is-disabled' : ''}" ${stopDis ? `disabled style="${disStyle}" onclick="${noopClick}"` : `onclick="svcAction('stop', ${sid}, ${svcId}, '${escHtml(name)}', this)"`} title="${stopTitle}">${svgStop} <span>${isEn ? ('Stop Service' + (!isUp ? ' (Stopped)' : '')) : ('Hentikan Service' + (!isUp ? ' (Terhenti)' : ''))}</span></button>`;
-  items += `<button type="button" class="noc-act-dropdown-item" onclick="openServiceLogModal('${escHtml(name)}', '${escHtml(status || '')}')" title="${logTitle}">${svgLog} <span>${isEn ? 'View Service Logs' : 'Lihat Log Service'}</span></button>`;
+  items += `<button type="button" class="noc-act-dropdown-item" onclick="openServiceLogModal('${escHtml(name)}', '${escHtml(status || '')}', '', null, ${procArg})" title="${logTitle}">${svgLog} <span>${isEn ? 'View Service Logs' : 'Lihat Log Service'}</span></button>`;
   items += `<button type="button" class="noc-act-dropdown-item" onclick="selectServiceForGraph(${svcId})" title="${isEn ? 'View availability and metrics chart for ' + name : 'Lihat riwayat grafik ketersediaan dan performa ' + name}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg> <span>${isEn ? 'View Metrics Chart' : 'Lihat Riwayat Grafik'}</span></button>`;
 
   if (isIgnored) {
@@ -10779,7 +10785,7 @@ function patch(data) {
           prob = { id: s.problem_id, is_ignored: s.ignored, message: s.problem_msg };
         }
         act.innerHTML = renderServiceActions(
-          act.dataset.sid, act.dataset.svc, act.dataset.name, s.status, s.pending, prob, s.ignored, s.pending_action
+          act.dataset.sid, act.dataset.svc, act.dataset.name, s.status, s.pending, prob, s.ignored, s.pending_action, act.dataset.process || ''
         );
       }
     }
@@ -11575,6 +11581,9 @@ async function pollSystem(force = false) {
       const data = await r.json();
       if (data.units) _cachedLogUnits = data.units;
       if (data.extras) _cachedLogExtras = data.extras;
+      if (Array.isArray(data.available_logs) && data.available_logs.length > 0) {
+        window.SERVER_AVAILABLE_LOGS = data.available_logs;
+      }
       const tabLog = document.getElementById('tab-log');
       if (tabLog && !tabLog.hidden) {
         try { startAutoLog(data.units, data.extras); } catch (e) {}
@@ -12569,7 +12578,8 @@ const RAW_SERVER_SERVICES = [
   {% endif %}
 ];
 
-const SERVER_AVAILABLE_LOGS = {{ (available_logs or []) | tojson }};
+let SERVER_AVAILABLE_LOGS = {{ (available_logs or []) | tojson }};
+window.SERVER_AVAILABLE_LOGS = SERVER_AVAILABLE_LOGS;
 
 let logVersion = 0;
 let logRunning = false;
@@ -13162,13 +13172,15 @@ let _svcModalLiveTail = true;
 let _svcModalSearchQuery = '';
 let _svcModalLevelFilter = 'all';
 
-function openServiceLogModal(unitName, status, port, filterText) {
+function openServiceLogModal(unitName, status, port, filterText, processName) {
   if (!unitName) return;
   _svcModalActive = true;
   _svcModalVersion++;
   const curVer = _svcModalVersion;
-  _svcModalUnit = String(unitName).replace(/\.service$/, '');
+  _svcModalUnit = String(unitName).replace(/\.service$/, '').trim();
+  const procClean = processName ? String(processName).replace(/\.service$/, '').trim() : '';
   const uLower = _svcModalUnit.toLowerCase();
+  const pLower = procClean.toLowerCase();
 
   const modal = document.getElementById('svc-log-modal');
   const nameEl = document.getElementById('svc-modal-unit-name');
@@ -13176,7 +13188,13 @@ function openServiceLogModal(unitName, status, port, filterText) {
   const portBadge = document.getElementById('svc-modal-port-badge');
   const pillsBar = document.getElementById('svc-modal-sources-bar');
 
-  if (nameEl) nameEl.textContent = _svcModalUnit + '.service';
+  if (nameEl) {
+    let displayTitle = _svcModalUnit + '.service';
+    if (procClean && procClean !== _svcModalUnit) {
+      displayTitle += ` (${procClean})`;
+    }
+    nameEl.textContent = displayTitle;
+  }
 
   if (stsBadge) {
     if (status) {
@@ -13197,42 +13215,79 @@ function openServiceLogModal(unitName, status, port, filterText) {
     }
   }
 
-  // Tentukan sumber berkas log nyata untuk layanan ini
+  // Tentukan sumber berkas log nyata secara dinamis dan agnostik (universal zero-hardcode)
   const availableSources = [];
+  const seenIds = new Set();
 
-  if (uLower.includes('nginx')) {
-    if (Array.isArray(SERVER_AVAILABLE_LOGS)) {
-      SERVER_AVAILABLE_LOGS.forEach(l => {
-        if (l.id === 'NGINX_ACCESS') availableSources.push({ id: 'NGINX_ACCESS', label: 'Access Log', desc: l.desc || '/var/log/nginx/access.log' });
-        if (l.id === 'NGINX_ERROR') availableSources.push({ id: 'NGINX_ERROR', label: 'Error Log', desc: l.desc || '/var/log/nginx/error.log' });
-      });
-    }
-    availableSources.push({ id: _svcModalUnit, label: 'Jurnal Systemd', desc: 'journalctl -u ' + _svcModalUnit });
-  } else if (uLower.includes('apache') || uLower.includes('httpd')) {
-    if (Array.isArray(SERVER_AVAILABLE_LOGS)) {
-      SERVER_AVAILABLE_LOGS.forEach(l => {
-        if (l.id === 'APACHE_ACCESS') availableSources.push({ id: 'APACHE_ACCESS', label: 'Access Log', desc: l.desc || '/var/log/apache2/access.log' });
-        if (l.id === 'APACHE_ERROR') availableSources.push({ id: 'APACHE_ERROR', label: 'Error Log', desc: l.desc || '/var/log/apache2/error.log' });
-      });
-    }
-    availableSources.push({ id: _svcModalUnit, label: 'Jurnal Systemd', desc: 'journalctl -u ' + _svcModalUnit });
-  } else if (uLower.includes('mariadb') || uLower.includes('mysql')) {
-    if (Array.isArray(SERVER_AVAILABLE_LOGS)) {
-      SERVER_AVAILABLE_LOGS.forEach(l => {
-        if (l.id === 'MARIADB_ERROR') availableSources.push({ id: 'MARIADB_ERROR', label: 'Error Log', desc: l.desc || '/var/log/mysql/error.log' });
-        if (l.id === 'MARIADB_SLOW') availableSources.push({ id: 'MARIADB_SLOW', label: 'Slow Query Log', desc: l.desc || '/var/log/mysql/mariadb-slow.log' });
-      });
-    }
-    availableSources.push({ id: _svcModalUnit, label: 'Jurnal Systemd', desc: 'journalctl -u ' + _svcModalUnit });
-  } else if (uLower.includes('sshd') || uLower === 'ssh') {
-    if (Array.isArray(SERVER_AVAILABLE_LOGS)) {
-      SERVER_AVAILABLE_LOGS.forEach(l => {
-        if (l.id === 'AUTH') availableSources.push({ id: 'AUTH', label: 'Log Autentikasi', desc: l.desc || '/var/log/auth.log' });
-      });
-    }
-    availableSources.push({ id: _svcModalUnit, label: 'Jurnal Systemd', desc: 'journalctl -u ' + _svcModalUnit });
-  } else {
-    availableSources.push({ id: _svcModalUnit, label: 'Jurnal Systemd (' + _svcModalUnit + '.service)', desc: 'journalctl -u ' + _svcModalUnit });
+  // 1. Sumber Utama: Jurnal Systemd untuk unit layanan
+  availableSources.push({
+    id: _svcModalUnit,
+    label: `Jurnal Systemd (${_svcModalUnit})`,
+    desc: `journalctl -u ${_svcModalUnit}`
+  });
+  seenIds.add(_svcModalUnit.toUpperCase());
+
+  // 2. Jika nama proses berbeda dari nama unit (contoh: uvicorn vs pantau-server, mysql vs mariadb)
+  if (procClean && procClean !== _svcModalUnit && !seenIds.has(procClean.toUpperCase())) {
+    availableSources.push({
+      id: procClean,
+      label: `Jurnal Proses (${procClean})`,
+      desc: `journalctl _COMM=${procClean} / -u ${procClean}`
+    });
+    seenIds.add(procClean.toUpperCase());
+  }
+
+  // 3. Pencocokan Dinamis Terhadap Katalog Berkas Log Host (SERVER_AVAILABLE_LOGS)
+  const queryTokens = new Set();
+  [uLower, pLower].forEach(raw => {
+    if (!raw) return;
+    queryTokens.add(raw);
+    if (raw.endsWith('d') && raw.length > 3) queryTokens.add(raw.slice(0, -1));
+    if (raw.includes('-')) raw.split('-').forEach(part => { if (part.length > 2) queryTokens.add(part); });
+    if (raw.includes('_')) raw.split('_').forEach(part => { if (part.length > 2) queryTokens.add(part); });
+  });
+  if (queryTokens.has('mysql') || queryTokens.has('mariadb')) {
+    queryTokens.add('mysql');
+    queryTokens.add('mariadb');
+  }
+  if (queryTokens.has('apache') || queryTokens.has('apache2') || queryTokens.has('httpd')) {
+    queryTokens.add('apache');
+    queryTokens.add('apache2');
+    queryTokens.add('httpd');
+  }
+  if (queryTokens.has('ssh') || queryTokens.has('sshd')) {
+    queryTokens.add('auth');
+    queryTokens.add('ssh');
+    queryTokens.add('sshd');
+  }
+
+  const logList = window.SERVER_AVAILABLE_LOGS || SERVER_AVAILABLE_LOGS;
+  if (Array.isArray(logList)) {
+    logList.forEach(l => {
+      if (!l || !l.id || seenIds.has(l.id.toUpperCase())) return;
+      const lId = (l.id || '').toLowerCase();
+      const lDesc = (l.desc || l.path || '').toLowerCase();
+      const lName = (l.name || '').toLowerCase();
+      const lGrp = (l.group || '').toLowerCase();
+
+      let matched = false;
+      for (const token of queryTokens) {
+        if (!token) continue;
+        if (lId.includes(token) || lDesc.includes(`/${token}/`) || lDesc.includes(`${token}.`) || lName.includes(token) || (lGrp && lGrp.includes(token))) {
+          matched = true;
+          break;
+        }
+      }
+
+      if (matched) {
+        seenIds.add(l.id.toUpperCase());
+        availableSources.push({
+          id: l.id,
+          label: l.name || l.id,
+          desc: l.desc || l.path || l.id
+        });
+      }
+    });
   }
 
   // Render pills
@@ -13298,6 +13353,18 @@ function closeServiceLogModal() {
   _svcModalVersion++;
   const modal = document.getElementById('svc-log-modal');
   if (modal) modal.style.display = 'none';
+}
+
+function openSvcModalInFullTab() {
+  const targetId = _svcModalTargetId || _svcModalUnit;
+  closeServiceLogModal();
+  showTab('log');
+  const sel = document.getElementById('log-unit');
+  if (sel) {
+    populateLogSourcesSelect(targetId);
+    if (targetId) sel.value = targetId;
+    changeUnit();
+  }
 }
 
 function setSvcModalState(t) {

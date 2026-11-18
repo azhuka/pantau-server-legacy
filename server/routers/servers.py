@@ -2624,6 +2624,7 @@ def api_server_system(
             for fe in fim_events_db
         ],
         "systemd_units": parse_list(extra.systemd_units if extra else None) if (extra and extra.systemd_units) else None,
+        "available_logs": parse_list(extra.available_logs if extra else None) if (extra and getattr(extra, "available_logs", None)) else [],
         "apt_upgradable": extra.apt_upgradable if extra else 0,
         "apt_last_update": extra.apt_last_update.isoformat() if (extra and extra.apt_last_update) else None,
         "apt_packages": parse_list(extra.apt_packages if extra else None) if (extra and extra.apt_packages) else [],
