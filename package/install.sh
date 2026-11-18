@@ -281,7 +281,7 @@ except Exception as e:
     print("UNREACHABLE:%s" % e); raise SystemExit
 try:
     req = urllib.request.Request(url + "/api/commands")
-    req.add_header("User-Agent", "AgentPantau-Installer/4.11.24")
+    req.add_header("User-Agent", "AgentPantau-Installer/4.11.25")
     req.add_header("X-Api-Key", key)
     with urllib.request.urlopen(req, timeout=8) as r:
         print("OK" if r.status == 200 else "HTTP%d" % r.status)
@@ -340,7 +340,7 @@ try:
                 'owner_group': f"{res.get('owner', '')}:{res.get('group', '')}",
                 'count': res.get('count', 0),
             }
-            base['_meta_agent_version'] = "4.11.24"
+            base['_meta_agent_version'] = "4.11.25"
             with open('/etc/pantau/fim_baseline.json', 'w') as f:
                 json.dump(base, f, indent=2)
 except Exception:

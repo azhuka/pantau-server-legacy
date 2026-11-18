@@ -1030,28 +1030,100 @@ table.noc-table-dense {
   border-collapse: collapse;
   table-layout: auto;
 }
-table.noc-table-dense th,
-table.noc-table-dense td {
-  padding: 4px 8px;
-  font-size: 11px;
-  vertical-align: middle;
+table.noc-table-dense th {
+  padding: 10px 14px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.4px !important;
+  text-transform: uppercase !important;
+  color: var(--dim, #94a3b8) !important;
+  border-bottom: 1px solid var(--border) !important;
+  white-space: nowrap;
+  background: rgba(15, 23, 42, 0.35);
+  vertical-align: middle !important;
   box-sizing: border-box;
 }
-table.noc-table-dense th {
-  text-transform: none !important;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  color: var(--dim);
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
+[data-theme="light"] table.noc-table-dense th {
+  background: rgba(241, 245, 249, 0.7);
+  color: #475569 !important;
+}
+table.noc-table-dense td {
+  padding: 10px 14px !important;
+  font-size: 13.5px !important;
+  vertical-align: middle !important;
+  box-sizing: border-box;
+  line-height: 1.45 !important;
 }
 table.noc-table-dense tbody tr {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
   transition: background 0.12s ease;
 }
+[data-theme="light"] table.noc-table-dense tbody tr {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
 table.noc-table-dense tbody tr:hover {
-  background: var(--card-hover, rgba(255, 255, 255, 0.035));
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+[data-theme="light"] table.noc-table-dense tbody tr:hover {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Penyelarasan Khusus Skala Tabel Dasbor Operasional (#dash-server-table) */
+#dash-server-table .col-dash-server strong {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+}
+#dash-server-table .col-dash-server .dot {
+  width: 8px !important;
+  height: 8px !important;
+}
+#dash-server-table .col-dash-status .badge {
+  font-size: 10.5px !important;
+  padding: 2.5px 7px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.3px !important;
+  border-radius: 4px !important;
+}
+#dash-server-table .tbl-plat-wrap .badge {
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+  font-weight: 600 !important;
+  border-radius: 4px !important;
+}
+#dash-server-table .tbl-ip-wrap {
+  font-size: 11.5px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  opacity: 0.9;
+}
+#dash-server-table .col-dash-uptime {
+  font-size: 12.5px !important;
+}
+#dash-server-table .tbl-metric-box strong {
+  font-size: 13px !important;
+  min-width: 48px !important;
+}
+#dash-server-table .meter-led-track {
+  width: 72px !important;
+  height: 13px !important;
+  gap: 2px !important;
+  padding: 2px !important;
+}
+#dash-server-table .col-dash-svc {
+  font-size: 13px !important;
+}
+#dash-server-table .col-dash-prob .badge,
+#dash-server-table .col-dash-prob span {
+  font-size: 11px !important;
+}
+
+/* Mode Kompak Dasbor Operasional */
+#dash-server-table.tbl-compact th {
+  padding: 6px 10px !important;
+  font-size: 11px !important;
+}
+#dash-server-table.tbl-compact td {
+  padding: 6px 10px !important;
+  font-size: 12.5px !important;
 }
 
 /* Keluarga 2: Tabel Terstruktur Ringkas (Users, Cron, SSL, Maintenance, Audit) */
@@ -1062,14 +1134,14 @@ table.noc-table-compact {
 }
 table.noc-table-compact th,
 table.noc-table-compact td {
-  padding: 7px 12px;
-  font-size: 11.5px;
+  padding: 9px 12px;
+  font-size: 12.5px;
   vertical-align: middle;
   box-sizing: border-box;
 }
 table.noc-table-compact th {
-  text-transform: none !important;
-  font-size: 10.5px;
+  text-transform: uppercase !important;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.3px;
   color: var(--dim);
@@ -2338,33 +2410,36 @@ body.show-alert-banner .noc-global-topbar {
 
 /* ==========================================================================
    Activity Console Drawer & Real-Time Event Stream (ADR-0030)
+   Isolated Dark Terminal Theme - Pristine in Both Light & Dark Modes
    ========================================================================== */
 .activity-console-drawer {
-  position: fixed;
-  bottom: 34px;
-  left: 0;
-  right: 0;
-  height: 260px;
-  max-height: 50vh;
-  z-index: 9998;
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 275px;
+  max-height: 55vh;
+  z-index: 9999 !important;
   display: flex;
   flex-direction: column;
-  background: var(--card, #0f172a);
-  border-top: 1px solid var(--border, #30363d);
-  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.6);
+  background: #0d1117 !important;
+  color: #c9d1d9 !important;
+  border-top: 1px solid #30363d !important;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.7) !important;
   transition: height 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 .activity-console-drawer.is-maximized {
-  height: 50vh !important;
+  height: 55vh !important;
 }
 
 .activity-toolbar {
-  height: 38px;
-  background: rgba(15, 23, 42, 0.98);
-  border-bottom: 1px solid var(--border, #30363d);
-  padding: 0 14px;
+  height: 38px !important;
+  background: #161b22 !important;
+  border-bottom: 1px solid #30363d !important;
+  padding: 0 14px !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2374,11 +2449,41 @@ body.show-alert-banner .noc-global-topbar {
   box-sizing: border-box;
 }
 
+.activity-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #f0f6fc !important;
+  font-size: 12.5px;
+}
+
 .activity-toolbar-left,
 .activity-toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.activity-toolbar .btn-ghost {
+  color: #c9d1d9 !important;
+  background: transparent !important;
+  border: 1px solid #30363d !important;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.activity-toolbar .btn-ghost:hover {
+  color: #ffffff !important;
+  background: #21262d !important;
+  border-color: #8b949e !important;
 }
 
 .activity-live-pill {
@@ -2388,49 +2493,145 @@ body.show-alert-banner .noc-global-topbar {
   border-radius: 4px;
   border: 1px solid rgba(34, 197, 94, 0.4);
   background: rgba(34, 197, 94, 0.15);
-  color: #4ade80;
+  color: #4ade80 !important;
 }
 
 .activity-live-pill.paused {
   border-color: rgba(234, 179, 8, 0.4);
   background: rgba(234, 179, 8, 0.15);
-  color: #facc15;
+  color: #facc15 !important;
+}
+
+.activity-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 10px;
 }
 
 .activity-filter-btn {
   font-size: 10.5px;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid var(--border, #30363d);
-  background: transparent;
-  color: var(--dim, #94a3b8);
+  border: 1px solid #30363d !important;
+  background: #21262d !important;
+  color: #8b949e !important;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .activity-filter-btn:hover {
-  color: var(--text, #f8fafc);
-  background: var(--hover, rgba(255, 255, 255, 0.05));
+  color: #f0f6fc !important;
+  background: #30363d !important;
 }
 
 .activity-filter-btn.active {
-  background: var(--blue, #3b82f6);
-  border-color: var(--blue, #3b82f6);
-  color: #ffffff;
+  background: #1f6feb !important;
+  border-color: #388bfd !important;
+  color: #ffffff !important;
 }
 
-.activity-row {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  transition: background 0.1s ease;
+.activity-search-input {
+  margin-left: 8px;
+  height: 24px;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  background: #0d1117 !important;
+  border: 1px solid #30363d !important;
+  border-radius: 4px;
+  color: #f0f6fc !important;
+  width: 240px;
+  box-sizing: border-box;
+  outline: none;
 }
 
-.activity-row:hover {
-  background: rgba(255, 255, 255, 0.03);
+.activity-search-input:focus {
+  border-color: #388bfd !important;
 }
 
-.activity-row td {
-  padding: 4px 10px;
+.activity-search-input::placeholder {
+  color: #6e7681 !important;
+}
+
+.activity-table-container {
+  flex: 1;
+  overflow-y: auto;
+  background: #0d1117 !important;
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.activity-table thead {
+  position: sticky;
+  top: 0;
+  background: #161b22 !important;
+  border-bottom: 1px solid #30363d !important;
+  z-index: 2;
+}
+
+.activity-table th {
+  padding: 6px 10px !important;
+  text-align: left;
+  color: #8b949e !important;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid #30363d !important;
+}
+
+.activity-table td {
+  padding: 5px 10px !important;
+  color: #c9d1d9 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
   line-height: 1.4;
   vertical-align: middle;
+}
+
+.activity-table tr:hover td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.activity-empty-state {
+  text-align: center;
+  padding: 32px;
+  color: #8b949e !important;
+  font-size: 12px;
+}
+
+.activity-export-menu {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 4px;
+  background: #161b22 !important;
+  border: 1px solid #30363d !important;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  min-width: 140px;
+  overflow: hidden;
+}
+
+.activity-export-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: #c9d1d9 !important;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.activity-export-menu button:hover {
+  background: #1f6feb !important;
+  color: #ffffff !important;
 }

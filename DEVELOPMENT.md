@@ -354,6 +354,15 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.25
+
+### Pembaruan & Perbaikan UI/UX Dasbor
+- **Penyelarasan Skala Tipografi Tabel Operasional**: Meningkatkan ukuran font tabel fleet dari 11px/8px menjadi standar 13.5px dan padding 10px 14px agar proporsional dan mudah dibaca pada skala 100%.
+- **Pembersihan Footer Ganda & Tab Publik**: Menghapus footer horizontal app-footer yang bertabrakan dengan sidebar footer, serta menghapus link tab baru ke halaman status publik.
+- **Eliminasi Whitespace Void**: Menyesuaikan flex layout pada noc-content-body sehingga area kosong abu-abu vertikal di bawah tabel tereliminasi.
+- **Isolasi Tema Activity Console**: Menerapkan tema gelap terminal terisolasi (#0d1117/#161b22) yang kontras dan nyaman dibaca baik pada mode gelap maupun mode terang, serta memindahkan tombol pemicu ke topbar kanan.
+
+
 ## Versi 4.11.24
 
 - File Duplication Safety (ADR-0028): Kloning lokal aman berkas/folder pada File Manager remote dengan penamaan timestamp presisi, disk space safety check (buffer 100MB), dan collision prevention.\n- Terminal Link Detection (ADR-0034): Deteksi URL interaktif bawaan xterm.js dengan kombinasi Ctrl+Click / Cmd+Click untuk membuka tautan langsung ke browser.
