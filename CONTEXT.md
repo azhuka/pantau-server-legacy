@@ -118,6 +118,14 @@ Antarmuka konsol shell interaktif berbasis pustaka xterm.js di dalam peramban we
 Mekanisme emulasi pseudoterminal Unix nyata (`/dev/pts/*`) menggunakan modul bawaan Python `pty` yang mendukung interpretasi lengkap karakter kontrol VT100, ANSI color codes, tab completion, dan sinyal interaktif (`SIGINT`/`Ctrl+C`).
 *Hindari*: Raw bash pipe, pseudo shell, tty wrapper.
 
+**Terminal Clipboard Bridge**:
+Mekanisme penanganan papan klip (clipboard) dwiarah pada Web Terminal yang mengadopsi standar ADR-0027: penyalinan kontekstual (`Ctrl+C` teks seleksi vs sinyal `SIGINT`), penempelan aman `Ctrl+V`, penyalinan otomatis saat seleksi mouse (*copy-on-select* debounced), serta dialog konfirmasi penempelan multi-baris 3-arah (*Batal*, *🔗 Jadikan 1 Baris / Flatten*, *📋 Tempel Apa Adanya*).
+*Hindari*: Terminal copy paste hack, raw multiline paste, uncontrolled shell clipboard.
+
+**Terminal From Path**:
+Aksi peluncuran sesi Web Terminal langsung dari antarmuka Web File Manager dengan navigasi otomatis `cd '<path>'` ke direktori aktif target (mengadopsi standar ADR-0026).
+*Hindari*: Quick shell, folder shell, manual terminal cd.
+
 ---
 
 ### D. Audit, Insiden, & Kontrol Akses (RBAC)

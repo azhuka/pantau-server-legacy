@@ -150,6 +150,9 @@
         <button type="button" class="fm-address-toggle" id="fm-address-pencil" onclick="fmTogglePathInput(true)" title="Ketik / Tempel Path Manual" aria-label="Sunting Path">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
         </button>
+        <button type="button" class="fm-address-toggle" id="fm-address-terminal" onclick="fmOpenTerminalAtCurrentPath()" title="Buka Web Terminal di Path Ini" aria-label="Terminal di Path" style="margin-left:2px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+        </button>
       </div>
     </div>
 
@@ -915,6 +918,11 @@ function fmSubmitPathInput(e) {
   if (!target.startsWith('/')) target = '/' + target;
   fmTogglePathInput(false);
   fmLoadDir(target);
+}
+
+function fmOpenTerminalAtCurrentPath() {
+  const target = fmCurrentPath || '/';
+  window.location.href = `/servers/{{ server.id }}?cd=${encodeURIComponent(target)}`;
 }
 
 // ===========================================================================

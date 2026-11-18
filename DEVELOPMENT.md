@@ -354,6 +354,18 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.21
+
+### Fitur Baru & Keamanan Terminal
+- **Adopsi Standar ADR-0027 (Terminal Clipboard Bridge):**
+  - Proteksi penempelan teks multi-baris aman dengan dialog konfirmasi 3-arah (*Batal*, *🔗 Jadikan 1 Baris*, *📋 Tempel Apa Adanya*).
+  - Helper flattenToSingleLine untuk merapikan baris baru dan backslash continuations tanpa eksekusi langsung di shell.
+  - Salin otomatis seleksi teks (*copy-on-select*) dengan debouncing 150ms.
+  - Context-aware Ctrl+C (salin teks jika ada seleksi, sinyal SIGINT ke proses Linux jika tidak ada seleksi).
+- **Adopsi Standar ADR-0026 (Terminal From Path):**
+  - Tombol aksi di address bar File Manager untuk membuka sesi shell langsung pada direktori aktif dengan cd otomatis.
+
+
 ## Versi 4.11.20
 
 ### Fitur & Standarisasi UI/UX\n- **Adopsi Standar Workspace Modal & Action Dialog:**\n  - Menstandarisasikan dimensi kontainer dan top-anchored alignment pada seluruh modal antarmuka.\n  - Mengeliminasi efek layout shift saat berpindah tab atau memuat pesan validasi.\n- **Dynamic LIFO Modal Stacking:**\n  - Penanganan Escape berjenjang dengan pelacakan tumpukan modal aktif secara dinamis.\n  - Integrasi berkas arsitektur tunggal CONTEXT.md dan AGENTS.md.

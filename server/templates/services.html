@@ -8423,6 +8423,69 @@ class WebTerminal {
     }
   }
 
+  sendInitialCd(path) {
+    if (!path) return;
+    const cleanPath = path.replace(/'/g, "'\\''");
+    const doSend = () => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'input', data: `cd '${cleanPath}'\n` }));
+      }
+    };
+    if (this.state === 'live' && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      setTimeout(doSend, 400);
+    } else {
+      if (typeof this.connect === 'function') this.connect();
+      const checkInterval = setInterval(() => {
+        if (this.state === 'live' && this.ws && this.ws.readyState === WebSocket.OPEN) {
+          clearInterval(checkInterval);
+          setTimeout(doSend, 600);
+        }
+      }, 300);
+      setTimeout(() => clearInterval(checkInterval), 10000);
+    }
+  }
+
+  async handlePasteText(text) {
+    if (!text || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    // Check multiline paste safety (Standar ADR-0027)
+    if (text.includes('\n') || text.includes('\r')) {
+      const rawLines = text.split(/\r\n|\r|\n/).filter(l => l.trim().length > 0);
+      const lineCount = rawLines.length || 1;
+      const preview = text.length > 200 ? text.substring(0, 200) + '...' : text;
+
+      const isEn = (document.documentElement.lang === 'en');
+      const res = await (typeof window.showConfirmModal === 'function' ? window.showConfirmModal({
+        title: isEn ? 'Multiline Paste Confirmation' : 'Konfirmasi Penempelan Multi-Baris',
+        msg: isEn
+          ? `You are about to paste ${lineCount} command lines into the terminal:\n\n${preview}\n\nContinue pasting to shell?`
+          : `Perintah yang Anda tempelkan terdiri dari ${lineCount} baris perintah:\n\n${preview}\n\nLanjutkan penempelan ke shell?`,
+        btnText: isEn ? '📋 Paste As Is' : '📋 Tempel Apa Adanya',
+        btnClass: 'btn-danger',
+        extraBtnText: isEn ? '🔗 Flatten to Single Line' : '🔗 Jadikan 1 Baris',
+        extraBtnValue: 'single',
+        extraBtnClass: 'btn-warning',
+        iconType: 'warning'
+      }) : Promise.resolve(true));
+
+      if (!res) {
+        this.focus();
+        return;
+      }
+
+      if (res === 'single') {
+        text = (typeof flattenToSingleLine === 'function')
+          ? flattenToSingleLine(text)
+          : text.replace(/\\\s*[\r\n]+/g, ' ').replace(/[\r\n]+/g, ' ').replace(/[ \t]+/g, ' ').trim();
+      }
+    }
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'input', data: text }));
+    }
+    this.focus();
+  }
+
   initXterm() {
     if (this.term || !this.containerEl || typeof Terminal === 'undefined') return;
 
@@ -8496,8 +8559,17 @@ class WebTerminal {
 
     // Smart Key Handler: Copy on Ctrl+C if text selected, Paste on Ctrl+V, Escape for fullscreen
     this.term.attachCustomKeyEventHandler(e => {
-      // 1. Copy pada Ctrl+C / Cmd+C bila ada teks yang diblok
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+      // 1. Copy pada Ctrl+C / Cmd+C (context aware) atau Ctrl+Shift+C (selalu copy)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        if (e.shiftKey) {
+          if (e.type === 'keydown') {
+            const sel = this.term.getSelection();
+            if (sel && navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(sel).catch(() => {});
+            }
+          }
+          return false;
+        }
         if (this.term && this.term.hasSelection()) {
           if (e.type === 'keydown') {
             const sel = this.term.getSelection();
@@ -8507,15 +8579,14 @@ class WebTerminal {
           }
           return false; // JANGAN kirim ^C (SIGINT) ke bash jika sedang ingin copy teks
         }
+        return true; // Tidak ada seleksi: biarkan ^C (SIGINT) sampai ke PTY shell
       }
       // 2. Paste pada Ctrl+V / Cmd+V
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
         if (e.type === 'keydown') {
           if (navigator.clipboard && navigator.clipboard.readText) {
             navigator.clipboard.readText().then(text => {
-              if (text && this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({ type: 'input', data: text }));
-              }
+              if (text) this.handlePasteText(text);
             }).catch(() => {});
           }
         }
@@ -8531,7 +8602,21 @@ class WebTerminal {
       return true;
     });
 
-    // Klik kanan: jika ada teks terseleksi -> Copy; jika tidak ada teks -> Paste dari clipboard
+    // Copy-on-select otomatis dengan debouncing 150ms
+    let selDebounce = null;
+    this.term.onSelectionChange(() => {
+      if (selDebounce) clearTimeout(selDebounce);
+      selDebounce = setTimeout(() => {
+        if (this.term && this.term.hasSelection()) {
+          const sel = this.term.getSelection();
+          if (sel && sel.trim().length > 0 && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sel).catch(() => {});
+          }
+        }
+      }, 150);
+    });
+
+    // Klik kanan: jika ada teks terseleksi -> Copy; jika tidak ada teks -> Paste aman dari clipboard
     if (this.containerEl) {
       this.containerEl.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -8544,9 +8629,7 @@ class WebTerminal {
         } else {
           if (navigator.clipboard && navigator.clipboard.readText) {
             navigator.clipboard.readText().then(text => {
-              if (text && this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({ type: 'input', data: text }));
-              }
+              if (text) this.handlePasteText(text);
             }).catch(() => {});
           }
         }
@@ -14035,13 +14118,23 @@ document.querySelectorAll('#svc-ranges .btn').forEach(b =>
   }));
 setInterval(() => { if (!document.hidden) loadSvcHistory(true); }, 30000);
 
-// Deep-link tab via ?tab= (dijalankan setelah semua fungsi dan state selesai dimuat)
+// Deep-link tab & path via ?tab= & ?cd= (dijalankan setelah semua fungsi dan state selesai dimuat)
 (function () {
-  let want = new URLSearchParams(location.search).get('tab');
+  const urlParams = new URLSearchParams(location.search);
+  let want = urlParams.get('tab');
   if (want === 'specs' || want === 'kinerja') want = 'perf';
   if (want) {
     const b = document.querySelector('#detail-tabs .tab[data-tab="' + want + '"]');
     if (b) showTab(want);
+  }
+  const initialCd = urlParams.get('cd') || urlParams.get('path');
+  if (initialCd) {
+    setTimeout(() => {
+      const t = getTerm();
+      if (t && typeof t.sendInitialCd === 'function') {
+        t.sendInitialCd(initialCd);
+      }
+    }, 800);
   }
   if (typeof _initPackagesData === 'function') _initPackagesData();
   if (typeof _initSystemdData === 'function') _initSystemdData();

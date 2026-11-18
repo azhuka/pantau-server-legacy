@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token }}">
 <title>{% block title %}Pantau Server{% endblock %}</title>
-<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.20' }}">
+<link rel="stylesheet" href="/static/css/pantau-noc.css?v={{ app_version or '4.11.21' }}">
 <style id="noc-act-dropdown-anti-cache">
   /* Override Mutlak Anti-Cache untuk Tombol Dropdown Tindakan yang Non-Aktif (Disabled) */
   .noc-act-dropdown-item:disabled,
@@ -3068,7 +3068,7 @@ body.show-alert-banner .main{padding-top:72px}
   </nav>
   <div class="sidebar-footer">
     <div class="sb-footer-brand">Pantau Server</div>
-    <div class="sb-footer-ver">v{{ app_version or '4.11.20' }}</div>
+    <div class="sb-footer-ver">v{{ app_version or '4.11.21' }}</div>
     <div class="sb-clock-card" id="sbClockBox" 
          data-server-tz="{{ server_tz or 'WITA' }}" 
          data-server-offset="{{ server_tz_offset if server_tz_offset is defined else 480 }}"
@@ -3606,7 +3606,15 @@ function showGuardrailPasswordModal(options) {
   });
 }
 
-// ---------- Universal Enterprise Confirmation Modal ----------
+// ---------- Universal Enterprise Confirmation Modal & Flatten Helper ----------
+function flattenToSingleLine(text) {
+  if (!text) return '';
+  let cleaned = text.replace(/\\\s*[\r\n]+/g, ' ');
+  cleaned = cleaned.replace(/[\r\n]+/g, ' ');
+  cleaned = cleaned.replace(/[ \t]+/g, ' ');
+  return cleaned.trim();
+}
+
 let _appConfirmResolver = null;
 window.showConfirmModal = function(opts) {
   opts = opts || {};
@@ -3622,6 +3630,7 @@ window.showConfirmModal = function(opts) {
     const targetRow = document.getElementById('app-confirm-target-row');
     const targetEl = document.getElementById('app-confirm-target');
     const btnYes = document.getElementById('app-confirm-btn-yes');
+    const btnExtra = document.getElementById('app-confirm-btn-extra');
     const badgeEl = document.getElementById('app-confirm-badge');
     const iconWrap = document.getElementById('app-confirm-icon-wrap');
     const iconSvg = document.getElementById('app-confirm-icon');
@@ -3654,6 +3663,17 @@ window.showConfirmModal = function(opts) {
       btnYes.className = 'btn btn-sm ' + btnClass;
     }
 
+    if (btnExtra) {
+      if (opts.extraBtnText) {
+        btnExtra.textContent = opts.extraBtnText;
+        btnExtra.className = 'btn btn-sm ' + (opts.extraBtnClass || 'btn-warning');
+        btnExtra.style.display = 'inline-block';
+        btnExtra.onclick = () => closeAppConfirmModal(opts.extraBtnValue !== undefined ? opts.extraBtnValue : 'extra');
+      } else {
+        btnExtra.style.display = 'none';
+      }
+    }
+
     if (iconWrap && iconSvg) {
       if (iconType === 'primary' || iconType === 'info') {
         iconWrap.style.background = 'rgba(59,130,246,0.15)';
@@ -3681,7 +3701,11 @@ window.closeAppConfirmModal = function(result) {
   const modal = document.getElementById('app-confirm-modal');
   if (modal) modal.style.display = 'none';
   if (_appConfirmResolver) {
-    _appConfirmResolver(Boolean(result));
+    if (result === false || result === 0 || result === null || result === undefined) {
+      _appConfirmResolver(false);
+    } else {
+      _appConfirmResolver(result);
+    }
     _appConfirmResolver = null;
   }
 };
@@ -5266,6 +5290,7 @@ setInterval(alertFetch, 5000);
 
     <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;border-top:1px solid var(--border);padding-top:12px">
       <button type="button" class="btn btn-ghost btn-sm" onclick="closeAppConfirmModal(false)">Batal</button>
+      <button type="button" class="btn btn-warning btn-sm" id="app-confirm-btn-extra" style="display:none"></button>
       <button type="button" class="btn btn-danger btn-sm" id="app-confirm-btn-yes" onclick="closeAppConfirmModal(true)">Ya, Lanjutkan</button>
     </div>
   </div>
