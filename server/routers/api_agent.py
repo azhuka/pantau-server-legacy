@@ -705,6 +705,20 @@ def agent_report(
                         if isinstance(g, str) and g.strip():
                             clean_groups_list.append(_clean_str(g, "", 64))
 
+                raw_procs = acc.get("procs")
+                clean_procs = []
+                if isinstance(raw_procs, list):
+                    for p in raw_procs[:10]:
+                        if isinstance(p, dict):
+                            clean_procs.append({
+                                "pid": _clamp_int(p.get("pid"), 0, 0, 2 ** 31 - 1),
+                                "comm": _clean_str(p.get("comm"), "", 64),
+                                "stat": _clean_str(p.get("stat"), "", 10),
+                                "cpu": _clamp_float(p.get("cpu"), 0.0, 0.0, 1000.0),
+                                "mem": _clamp_float(p.get("mem"), 0.0, 0.0, 100.0),
+                                "args": _clean_str(p.get("args"), "", 200),
+                            })
+
                 clean_accounts.append({
                     "user": _clean_str(acc.get("user"), "", 64),
                     "uid": _clamp_int(acc.get("uid"), None, 0, 2 ** 31),
@@ -715,6 +729,9 @@ def agent_report(
                     "shell": _clean_str(acc.get("shell"), "", 50),
                     "last_login": _clean_str(acc.get("last_login"), None, 64),
                     "sessions": clean_sessions,
+                    "procs_count": _clamp_int(acc.get("procs_count"), len(clean_procs), 0, 100000),
+                    "primary_proc": _clean_str(acc.get("primary_proc"), "", 64),
+                    "procs": clean_procs,
                     "is_system": bool(acc.get("is_system")),
                     "is_sudo": bool(acc.get("is_sudo")),
                     "is_protected": bool(acc.get("is_protected")),

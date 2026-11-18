@@ -354,6 +354,13 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.17
+
+### v4.11.17 (2026-11-18)
+- **Penyerapan Telemetri Proses Akun:** Menambahkan penyerapan procs_count, primary_proc, dan procs pada handler laporan telemetri api_agent.py, memastikan data proses aktif per akun tersimpan presisi di database.
+- **Konsistensi Riwayat Tindakan Akun:** Menghubungkan telemetri proses aktif riil host ke dalam riwayat tindakan pengguna di dashboard secara end-to-end.
+
+
 ## Versi 4.11.16
 
 ### v4.11.16 (2026-11-18)
