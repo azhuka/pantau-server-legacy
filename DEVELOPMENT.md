@@ -354,6 +354,19 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.18
+
+## [4.11.18] - 2026-11-18
+### Ditambahkan
+- **Pelacakan Siklus Hidup Kejadian Integritas (FIM Lifecycle Tracking):** Kolom status (Berlangsung, Diakui, Selesai, Arsip) pada tabel Riwayat Perubahan Integritas (FIM).
+- **Atribusi & Pengakuan Operator:** Kolom acknowledged_at dan acknowledged_by pada model FIMEvent dan skema fim_events, serta endpoint ack individual dan ack-all.
+- **Filter Chip Status Kejadian FIM:** Kontrol filter visual cepat dengan counter dinamis pada kartu Riwayat Perubahan Integritas.
+- **Tombol Cepat Akui Semua:** Aksi massal untuk menandai seluruh insiden FIM yang belum ditinjau menjadi diakui.
+
+### Diubah
+- **Sinkronisasi Dual-Render:** Struktur 7 kolom tabel #tbl-fim-events disinkronkan identik antara Jinja HTML dan fungsi JS renderFim.
+
+
 ## Versi 4.11.17
 
 ### v4.11.17 (2026-11-18)

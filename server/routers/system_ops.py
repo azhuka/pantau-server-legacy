@@ -1545,6 +1545,125 @@ def server_fim_remove_path(
     return RedirectResponse(f"/servers/{sid}?tab=integritas", status_code=303)
 
 
+@router.post("/servers/{sid}/fim/events/{event_id}/ack")
+def server_fim_event_ack(
+    request: Request,
+    sid: int,
+    event_id: int,
+    ack: int = Form(default=1),
+    csrf_token: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    """Menandai suatu kejadian perubahan integritas (FIM) telah diakui oleh operator atau membatalkannya."""
+    user = get_current_user(request, db)
+    is_json = "application/json" in request.headers.get("accept", "")
+    if not user or not (user.is_master_admin() or user.is_operator()) or not user.can_access_server(sid):
+        if is_json:
+            return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
+        return RedirectResponse("/", status_code=303)
+    _verify_csrf_form(request, csrf_token)
+    server = db.query(Server).filter(Server.id == sid).first()
+    if not server:
+        if is_json:
+            return JSONResponse({"ok": False, "detail": "Server tidak ditemukan"}, status_code=404)
+        return RedirectResponse("/servers", status_code=303)
+
+    try:
+        from models import FIMEvent
+    except ImportError:
+        from server.models import FIMEvent
+
+    ev = db.query(FIMEvent).filter(FIMEvent.id == event_id, FIMEvent.server_id == sid).first()
+    if not ev:
+        if is_json:
+            return JSONResponse({"ok": False, "detail": "Kejadian FIM tidak ditemukan"}, status_code=404)
+        return RedirectResponse(f"/servers/{sid}?tab=integritas", status_code=303)
+
+    is_ack = 1 if ack else 0
+    now_dt = datetime.utcnow()
+    ev.acknowledged = is_ack
+    ev.acknowledged_at = now_dt if is_ack else None
+    ev.acknowledged_by = user.username if is_ack else None
+
+    act_desc = "tandai diakui" if is_ack else "batal diakui"
+    _audit(
+        db,
+        user.username,
+        "fim_event_ack",
+        f"{server.hostname}: {act_desc} kejadian FIM #{event_id} ({ev.path})",
+        "sukses",
+        server_id=sid,
+    )
+    db.commit()
+
+    if is_json:
+        return JSONResponse({
+            "ok": True,
+            "event_id": event_id,
+            "acknowledged": is_ack,
+            "acknowledged_by": ev.acknowledged_by or "",
+            "acknowledged_at": ev.acknowledged_at.isoformat() if ev.acknowledged_at else "",
+            "detail": f"Kejadian FIM #{event_id} {'berhasil ditandai diakui' if is_ack else 'pengakuan dibatalkan'}.",
+        })
+    return RedirectResponse(f"/servers/{sid}?tab=integritas", status_code=303)
+
+
+@router.post("/servers/{sid}/fim/events/ack-all")
+def server_fim_events_ack_all(
+    request: Request,
+    sid: int,
+    csrf_token: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    """Menandai seluruh kejadian perubahan integritas yang masih belum diakui di server ini menjadi diakui."""
+    user = get_current_user(request, db)
+    is_json = "application/json" in request.headers.get("accept", "")
+    if not user or not (user.is_master_admin() or user.is_operator()) or not user.can_access_server(sid):
+        if is_json:
+            return JSONResponse({"ok": False, "detail": "Akses ditolak"}, status_code=403)
+        return RedirectResponse("/", status_code=303)
+    _verify_csrf_form(request, csrf_token)
+    server = db.query(Server).filter(Server.id == sid).first()
+    if not server:
+        if is_json:
+            return JSONResponse({"ok": False, "detail": "Server tidak ditemukan"}, status_code=404)
+        return RedirectResponse("/servers", status_code=303)
+
+    try:
+        from models import FIMEvent
+    except ImportError:
+        from server.models import FIMEvent
+
+    now_dt = datetime.utcnow()
+    updated_cnt = (
+        db.query(FIMEvent)
+        .filter(FIMEvent.server_id == sid, FIMEvent.acknowledged == 0)
+        .update({
+            FIMEvent.acknowledged: 1,
+            FIMEvent.acknowledged_at: now_dt,
+            FIMEvent.acknowledged_by: user.username,
+        }, synchronize_session=False)
+    )
+
+    _audit(
+        db,
+        user.username,
+        "fim_event_ack_all",
+        f"{server.hostname}: akui seluruh ({updated_cnt}) kejadian FIM yang belum ditangani",
+        "sukses",
+        server_id=sid,
+    )
+    db.commit()
+
+    if is_json:
+        return JSONResponse({
+            "ok": True,
+            "updated_count": updated_cnt,
+            "detail": f"{updated_cnt} kejadian FIM berhasil ditandai diakui.",
+        })
+    return RedirectResponse(f"/servers/{sid}?tab=integritas", status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # AGENT DISTRIBUTION (LATEST CODE & WRAPPERS)
 # ---------------------------------------------------------------------------

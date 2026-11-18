@@ -1145,6 +1145,36 @@ def services_page(request: Request, sid: int, db: Session = Depends(get_db)):
         .all()
     )
 
+    path_status_map = {fp.path: fp.status for fp in fim_paths}
+    for fe in fim_events:
+        p_status = path_status_map.get(fe.path)
+        if fe.acknowledged:
+            fe.lifecycle_status = "ACKNOWLEDGED"
+            fe.lifecycle_label = "Diakui"
+            fe.lifecycle_badge = "badge-info"
+            ack_by = getattr(fe, "acknowledged_by", None) or "operator"
+            ack_at_str = fe.acknowledged_at.strftime("%Y-%m-%d %H:%M:%S") if getattr(fe, "acknowledged_at", None) else ""
+            fe.lifecycle_title = f"Diakui oleh {ack_by}" + (f" pada {ack_at_str}" if ack_at_str else "")
+        elif p_status == "VALID":
+            fe.lifecycle_status = "RESOLVED"
+            fe.lifecycle_label = "Selesai"
+            fe.lifecycle_badge = "badge-up"
+            fe.lifecycle_title = "Kondisi berkas/direktori saat ini telah valid dan sesuai acuan baseline."
+        elif p_status in ("CHANGED", "MISSING", "ERROR"):
+            fe.lifecycle_status = "ONGOING"
+            fe.lifecycle_label = "Berlangsung"
+            fe.lifecycle_badge = "badge-danger" if fe.severity == "danger" else "badge-warn"
+            fe.lifecycle_title = "Modifikasi masih aktif dan berbeda dari acuan baseline. Perlu ditinjau atau diperbarui acuannya."
+        else:
+            fe.lifecycle_status = "ARCHIVED"
+            fe.lifecycle_label = "Arsip"
+            fe.lifecycle_badge = "badge-muted"
+            fe.lifecycle_title = "Jalur berkas tidak lagi dipantau aktif."
+
+    fim_ongoing_count = sum(1 for fe in fim_events if fe.lifecycle_status == "ONGOING")
+    fim_ack_count = sum(1 for fe in fim_events if fe.lifecycle_status == "ACKNOWLEDGED")
+    fim_resolved_count = sum(1 for fe in fim_events if fe.lifecycle_status == "RESOLVED")
+
     return tpl(
         request,
         "services.html",
@@ -1152,6 +1182,9 @@ def services_page(request: Request, sid: int, db: Session = Depends(get_db)):
             "user": user,
             "server": server,
             "services": services,
+            "fim_ongoing_count": fim_ongoing_count,
+            "fim_ack_count": fim_ack_count,
+            "fim_resolved_count": fim_resolved_count,
             "commands": commands,
             "actions": actions,
             "agent_version": extra.agent_version if extra else None,
@@ -2584,6 +2617,9 @@ def api_server_system(
                 "severity": fe.severity,
                 "details": fe.details or "-",
                 "detected_at": fe.detected_at.isoformat() if fe.detected_at else None,
+                "acknowledged": bool(fe.acknowledged),
+                "acknowledged_at": fe.acknowledged_at.isoformat() if getattr(fe, "acknowledged_at", None) else None,
+                "acknowledged_by": getattr(fe, "acknowledged_by", None) or "",
             }
             for fe in fim_events_db
         ],

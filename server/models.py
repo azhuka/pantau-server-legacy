@@ -610,6 +610,8 @@ class FIMEvent(Base):
     details = Column(Text, nullable=True)                              # Rincian perubahan (ukuran, permission, hash lama -> baru)
     detected_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     acknowledged = Column(SmallInteger, nullable=False, default=0)
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by = Column(String(100), nullable=True)
 
     server = relationship("Server")
 

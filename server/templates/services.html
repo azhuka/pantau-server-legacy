@@ -2766,12 +2766,22 @@ div[style*="position: fixed"] .card {
 
   <!-- Kartu 2: Riwayat Perubahan Integritas (FIM Events) -->
   <div class="card" style="margin-top:14px">
-    <div class="card-header" style="align-items:center;justify-content:space-between">
+    <div class="card-header" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div>
         <h3 style="margin:0">Riwayat Perubahan Integritas (FIM)</h3>
         <span style="font-size:12px;color:var(--dim)">Log kronologis deteksi modifikasi file, hak akses, dan integritas</span>
       </div>
-      <div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="btn-group" style="display:inline-flex;gap:4px">
+          <button type="button" class="btn btn-xs btn-primary fim-ev-filter-btn" data-filter="all" onclick="filterFimEventStatus('all', this)" style="font-size:11px;padding:3px 8px">Semua <span id="fim-count-all" class="badge badge-muted" style="font-size:9px;margin-left:4px">{{ (fim_events|length) if fim_events else 0 }}</span></button>
+          <button type="button" class="btn btn-xs btn-ghost fim-ev-filter-btn" data-filter="ONGOING" onclick="filterFimEventStatus('ONGOING', this)" style="font-size:11px;padding:3px 8px">Berlangsung <span id="fim-count-ongoing" class="badge badge-warn" style="font-size:9px;margin-left:4px">{{ fim_ongoing_count or 0 }}</span></button>
+          <button type="button" class="btn btn-xs btn-ghost fim-ev-filter-btn" data-filter="ACKNOWLEDGED" onclick="filterFimEventStatus('ACKNOWLEDGED', this)" style="font-size:11px;padding:3px 8px">Diakui <span id="fim-count-ack" class="badge badge-info" style="font-size:9px;margin-left:4px">{{ fim_ack_count or 0 }}</span></button>
+          <button type="button" class="btn btn-xs btn-ghost fim-ev-filter-btn" data-filter="RESOLVED" onclick="filterFimEventStatus('RESOLVED', this)" style="font-size:11px;padding:3px 8px">Selesai <span id="fim-count-resolved" class="badge badge-up" style="font-size:9px;margin-left:4px">{{ fim_resolved_count or 0 }}</span></button>
+        </div>
+        <button type="button" class="btn btn-xs btn-secondary" id="btn-fim-ack-all" onclick="ackAllFimEvents(this)" style="font-size:11px;padding:3px 8px;{% if not fim_events or (fim_ack_count == (fim_events|length)) %}display:none{% else %}display:inline-flex;align-items:center{% endif %}" title="Tandai seluruh kejadian yang belum diakui menjadi diakui">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>Akui Semua</span>
+        </button>
         <span class="noc-head-badge noc-head-badge-muted" id="fim-events-badge">{{ (fim_events|length) if fim_events else 0 }} log kejadian</span>
       </div>
     </div>
@@ -2781,15 +2791,16 @@ div[style*="position: fixed"] .card {
           <tr>
             <th class="col-fixed-cell" style="width:130px" title="Waktu kejadian terdeteksi">Waktu</th>
             <th class="col-fixed-cell" style="min-width:180px" title="Path berkas atau direktori yang terdampak">Path</th>
-            <th class="col-fixed-cell" style="width:150px" title="Jenis perubahan integritas">Kejadian</th>
-            <th class="col-fixed-cell col-center-cell" style="width:90px" title="Tingkat keparahan dampak kejadian">Tingkat</th>
+            <th class="col-fixed-cell" style="width:140px" title="Jenis perubahan integritas">Kejadian</th>
+            <th class="col-fixed-cell col-center-cell" style="width:85px" title="Tingkat keparahan dampak kejadian">Tingkat</th>
+            <th class="col-fixed-cell col-center-cell" style="width:95px" title="Status penanganan dan siklus hidup kejadian">Status</th>
             <th class="col-hero-cell" title="Rincian perubahan ukuran, hak akses, atau hash">Rincian</th>
             <th class="col-fim-ev-act" style="text-align:center">Tindakan</th>
           </tr>
         </thead>
         <tbody>
           {% for fe in (fim_events if fim_events else []) %}
-          <tr>
+          <tr data-lifecycle-status="{{ fe.lifecycle_status or 'ARCHIVED' }}">
             <td class="col-fixed-cell mono" style="font-size:11px;color:var(--dim);white-space:nowrap">
               {{ fe.detected_at.strftime('%Y-%m-%d %H:%M:%S') if fe.detected_at else '—' }}
             </td>
@@ -2808,11 +2819,27 @@ div[style*="position: fixed"] .card {
                 <span class="badge badge-info" style="font-size:9.5px;padding:1px 6px">INFO</span>
               {% endif %}
             </td>
+            <td class="col-fixed-cell col-center-cell">
+              <span class="badge {{ fe.lifecycle_badge or 'badge-muted' }}" style="font-size:9.5px;padding:1px 6px" title="{{ fe.lifecycle_title or '' }}">
+                {{ fe.lifecycle_label or 'Arsip' }}
+              </span>
+            </td>
             <td class="col-hero-cell mono" style="font-size:11px;color:var(--text)">{{ fe.details or '—' }}</td>
             <td class="col-fim-ev-act" style="text-align:center">
               <details class="noc-act-dropdown">
                 <summary class="btn btn-xs btn-ghost btn-noc-act">Aksi ▾</summary>
                 <div class="noc-act-dropdown-menu">
+                  {% if fe.acknowledged %}
+                  <button type="button" class="noc-act-dropdown-item" onclick="toggleAckFimEvent({{ fe.id }}, 0, this)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                    <span>Batal Diakui</span>
+                  </button>
+                  {% else %}
+                  <button type="button" class="noc-act-dropdown-item text-primary" onclick="toggleAckFimEvent({{ fe.id }}, 1, this)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                    <span>Tandai Diakui</span>
+                  </button>
+                  {% endif %}
                   <button type="button" class="noc-act-dropdown-item text-primary" onclick="scanFimPath('{{ fe.path }}', this)">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
                     <span>Pindai Sekarang</span>
@@ -2827,7 +2854,7 @@ div[style*="position: fixed"] .card {
           </tr>
           {% else %}
           <tr>
-            <td colspan="6" class="empty-msg" style="text-align:center;padding:20px 12px;color:var(--dim)">
+            <td colspan="7" class="empty-msg" style="text-align:center;padding:20px 12px;color:var(--dim)">
               Belum ada perubahan file yang terdeteksi. Seluruh file sistem dan jalur kustom cocok dengan acuan baseline.
             </td>
           </tr>
@@ -6959,6 +6986,131 @@ async function submitAddFimPath(event) {
     showToast(isEn ? 'Network error during request.' : 'Terjadi gangguan jaringan.', false);
   } finally {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = orig; }
+  }
+}
+
+window._currentFimEventFilter = 'all';
+
+function filterFimEventStatus(status, el) {
+  window._currentFimEventFilter = status || 'all';
+  document.querySelectorAll('.fim-ev-filter-btn').forEach(btn => {
+    const f = btn.getAttribute('data-filter');
+    if (f === window._currentFimEventFilter) {
+      btn.className = 'btn btn-xs btn-primary fim-ev-filter-btn';
+    } else {
+      btn.className = 'btn btn-xs btn-ghost fim-ev-filter-btn';
+    }
+  });
+
+  const tbl = document.getElementById('tbl-fim-events');
+  if (tbl) {
+    const rows = tbl.querySelectorAll('tbody tr:not(.empty-msg)');
+    rows.forEach(tr => {
+      const rowStatus = tr.getAttribute('data-lifecycle-status') || '';
+      if (window._currentFimEventFilter === 'all' || rowStatus === window._currentFimEventFilter) {
+        tr.style.display = '';
+      } else {
+        tr.style.display = 'none';
+      }
+    });
+    if (typeof _servicesTabPagination !== 'undefined' && _servicesTabPagination['fim-events']) {
+      _servicesTabPagination['fim-events'].update();
+    }
+  }
+}
+
+async function toggleAckFimEvent(eventId, nextAck, btn) {
+  if (typeof IS_ONLINE !== 'undefined' && !IS_ONLINE) {
+    showToast('Server sedang offline. Aksi dinonaktifkan.', false);
+    return;
+  }
+  const isEn = (typeof currentLang !== 'undefined' && currentLang === 'en') || ((localStorage.getItem('app_lang') || 'id') === 'en');
+  if (nextAck) {
+    const ok = await showConfirmModal({
+      title: isEn ? 'Acknowledge Integrity Event' : 'Tandai Kejadian Integritas Diakui',
+      target: '#' + eventId,
+      message: isEn ? 'Mark this integrity modification as acknowledged and verified by operator.' : 'Tandai perubahan integritas ini sebagai sudah ditinjau dan diakui oleh operator.',
+      btnText: isEn ? 'Acknowledge' : 'Tandai Diakui',
+      btnClass: 'btn-primary',
+      iconType: 'warning',
+      badge: 'FIM'
+    });
+    if (!ok) return;
+  }
+
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const fd = new FormData();
+    fd.append('csrf_token', getCsrf());
+    fd.append('ack', nextAck ? '1' : '0');
+    const r = await fetch('/servers/' + SID + '/fim/events/' + eventId + '/ack', {
+      method: 'POST',
+      body: fd,
+      headers: { 'Accept': 'application/json', 'X-CSRF-Token': getCsrf() }
+    });
+    const res = await r.json().catch(() => ({}));
+    if (r.ok && res.ok !== false) {
+      showToast(res.detail || (isEn ? 'Event acknowledgment updated.' : 'Status pengakuan kejadian berhasil diperbarui.'), true);
+      triggerFastPoll();
+      if (typeof pollSystem === 'function') {
+        pollSystem(true);
+        setTimeout(() => pollSystem(true), 1200);
+      }
+      if (typeof filterServerActionHistory === 'function') filterServerActionHistory();
+    } else {
+      showToast(res.detail || (isEn ? 'Failed to update acknowledgment.' : 'Gagal memperbarui status pengakuan kejadian.'), false);
+    }
+  } catch (err) {
+    showToast(isEn ? 'Network error during request.' : 'Terjadi gangguan jaringan saat memproses permintaan.', false);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+async function ackAllFimEvents(btn) {
+  if (typeof IS_ONLINE !== 'undefined' && !IS_ONLINE) {
+    showToast('Server sedang offline. Aksi dinonaktifkan.', false);
+    return;
+  }
+  const isEn = (typeof currentLang !== 'undefined' && currentLang === 'en') || ((localStorage.getItem('app_lang') || 'id') === 'en');
+  const ok = await showConfirmModal({
+    title: isEn ? 'Acknowledge All Events' : 'Akui Seluruh Kejadian Integritas',
+    target: isEn ? 'All FIM Events' : 'Seluruh Kejadian FIM',
+    message: isEn ? 'Mark all unacknowledged integrity events on this server as acknowledged?' : 'Tandai seluruh kejadian perubahan integritas yang belum diakui pada server ini sebagai sudah ditinjau dan diakui?',
+    btnText: isEn ? 'Acknowledge All' : 'Akui Semua',
+    btnClass: 'btn-primary',
+    iconType: 'warning',
+    badge: 'FIM'
+  });
+  if (!ok) return;
+
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const fd = new FormData();
+    fd.append('csrf_token', getCsrf());
+    const r = await fetch('/servers/' + SID + '/fim/events/ack-all', {
+      method: 'POST',
+      body: fd,
+      headers: { 'Accept': 'application/json', 'X-CSRF-Token': getCsrf() }
+    });
+    const res = await r.json().catch(() => ({}));
+    if (r.ok && res.ok !== false) {
+      showToast(res.detail || (isEn ? 'All events acknowledged.' : 'Seluruh kejadian integritas berhasil ditandai diakui.'), true);
+      triggerFastPoll();
+      if (typeof pollSystem === 'function') {
+        pollSystem(true);
+        setTimeout(() => pollSystem(true), 1200);
+      }
+      if (typeof filterServerActionHistory === 'function') filterServerActionHistory();
+    } else {
+      showToast(res.detail || (isEn ? 'Failed to acknowledge events.' : 'Gagal menandai seluruh kejadian.'), false);
+    }
+  } catch (err) {
+    showToast(isEn ? 'Network error.' : 'Gangguan jaringan.', false);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
 }
 
@@ -11254,13 +11406,56 @@ function renderFim(paths, events) {
 
   // Render Table 2: Events
   const tblEvents = document.getElementById('tbl-fim-events');
+  if (tblEvents && tblEvents.querySelector('.noc-act-dropdown[open]')) {
+    return;
+  }
+
+  const pathStatusMap = {};
+  pathList.forEach(p => {
+    if (p && p.path) pathStatusMap[p.path] = p.status;
+  });
+
+  let ongoingCount = 0;
+  let ackCount = 0;
+  let resolvedCount = 0;
+
   if (tblEvents) {
     const tbody = tblEvents.querySelector('tbody');
     if (tbody) {
       if (eventList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="empty-msg" style="text-align:center;padding:20px 12px;color:var(--dim)">${isEn ? 'No integrity changes detected. All monitored files match baseline reference.' : 'Belum ada perubahan file yang terdeteksi. Seluruh file sistem dan jalur kustom cocok dengan acuan baseline.'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-msg" style="text-align:center;padding:20px 12px;color:var(--dim)">${isEn ? 'No integrity changes detected. All monitored files match baseline reference.' : 'Belum ada perubahan file yang terdeteksi. Seluruh file sistem dan jalur kustom cocok dengan acuan baseline.'}</td></tr>`;
       } else {
         tbody.innerHTML = eventList.map(e => {
+          const isAck = !!e.acknowledged;
+          const pStatus = pathStatusMap[e.path];
+
+          let lifecycleStatus = 'ARCHIVED';
+          let lifecycleLabel = isEn ? 'Archived' : 'Arsip';
+          let lifecycleBadge = 'badge-muted';
+          let lifecycleTitle = isEn ? 'Path is no longer actively monitored.' : 'Jalur berkas tidak lagi dipantau aktif.';
+
+          if (isAck) {
+            lifecycleStatus = 'ACKNOWLEDGED';
+            lifecycleLabel = isEn ? 'Acknowledged' : 'Diakui';
+            lifecycleBadge = 'badge-info';
+            const ackBy = e.acknowledged_by || 'operator';
+            const ackAt = e.acknowledged_at ? (e.acknowledged_at.replace('T', ' ').slice(0, 19)) : '';
+            lifecycleTitle = isEn ? `Acknowledged by ${ackBy}${ackAt ? ' at ' + ackAt : ''}` : `Diakui oleh ${ackBy}${ackAt ? ' pada ' + ackAt : ''}`;
+            ackCount++;
+          } else if (pStatus === 'VALID') {
+            lifecycleStatus = 'RESOLVED';
+            lifecycleLabel = isEn ? 'Resolved' : 'Selesai';
+            lifecycleBadge = 'badge-up';
+            lifecycleTitle = isEn ? 'Current path condition matches baseline reference.' : 'Kondisi berkas/direktori saat ini telah valid dan sesuai acuan baseline.';
+            resolvedCount++;
+          } else if (pStatus === 'CHANGED' || pStatus === 'MISSING' || pStatus === 'ERROR') {
+            lifecycleStatus = 'ONGOING';
+            lifecycleLabel = isEn ? 'Ongoing' : 'Berlangsung';
+            lifecycleBadge = (e.severity === 'danger') ? 'badge-danger' : 'badge-warn';
+            lifecycleTitle = isEn ? 'Modification is currently active and differs from baseline.' : 'Modifikasi masih aktif dan berbeda dari acuan baseline. Perlu ditinjau atau diperbarui acuannya.';
+            ongoingCount++;
+          }
+
           let typeBadge = `<span class="badge badge-muted" style="font-size:9.5px;padding:1px 6px">${escHtml(e.event_type)}</span>`;
           if (e.event_type === 'MODIFIED') {
             typeBadge = `<span class="badge badge-danger" style="font-size:9.5px;padding:1px 6px">MODIFIED</span>`;
@@ -11286,16 +11481,28 @@ function renderFim(paths, events) {
             evTime = e.detected_at.replace('T', ' ').slice(0, 19);
           }
 
-          return `<tr>
+          const ackActionBtn = isAck
+            ? `<button type="button" class="noc-act-dropdown-item" onclick="toggleAckFimEvent(${e.id}, 0, this)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                <span>${isEn ? 'Cancel Acknowledgment' : 'Batal Diakui'}</span>
+              </button>`
+            : `<button type="button" class="noc-act-dropdown-item text-primary" onclick="toggleAckFimEvent(${e.id}, 1, this)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <span>${isEn ? 'Acknowledge Event' : 'Tandai Diakui'}</span>
+              </button>`;
+
+          return `<tr data-lifecycle-status="${lifecycleStatus}">
             <td class="col-fixed-cell mono" style="font-size:11px;color:var(--dim);white-space:nowrap">${escHtml(evTime)}</td>
             <td class="col-fixed-cell"><code class="mono" style="font-size:11px;color:var(--text-bright);font-weight:600">${escHtml(e.path)}</code></td>
             <td class="col-fixed-cell">${typeBadge}</td>
             <td class="col-fixed-cell col-center-cell">${sevBadge}</td>
+            <td class="col-fixed-cell col-center-cell"><span class="badge ${lifecycleBadge}" style="font-size:9.5px;padding:1px 6px" title="${escHtml(lifecycleTitle)}">${lifecycleLabel}</span></td>
             <td class="col-hero-cell mono" style="font-size:11px;color:var(--text)">${escHtml(e.details || '—')}</td>
             <td class="col-fim-ev-act" style="text-align:center">
               <details class="noc-act-dropdown">
                 <summary class="btn btn-xs btn-ghost btn-noc-act">${isEn ? 'Action ▾' : 'Aksi ▾'}</summary>
                 <div class="noc-act-dropdown-menu">
+                  ${ackActionBtn}
                   <button type="button" class="noc-act-dropdown-item text-primary" onclick="scanFimPath('${escHtml(e.path)}', this)">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
                     <span>${isEn ? 'Scan Now' : 'Pindai Sekarang'}</span>
@@ -11311,6 +11518,40 @@ function renderFim(paths, events) {
         }).join('');
       }
     }
+
+    // Update filter counters
+    const cAll = document.getElementById('fim-count-all');
+    if (cAll) cAll.textContent = eventList.length;
+    const cOngoing = document.getElementById('fim-count-ongoing');
+    if (cOngoing) cOngoing.textContent = ongoingCount;
+    const cAck = document.getElementById('fim-count-ack');
+    if (cAck) cAck.textContent = ackCount;
+    const cRes = document.getElementById('fim-count-resolved');
+    if (cRes) cRes.textContent = resolvedCount;
+
+    // Toggle bulk ack button visibility
+    const btnAckAll = document.getElementById('btn-fim-ack-all');
+    if (btnAckAll) {
+      if (eventList.length > 0 && ackCount < eventList.length) {
+        btnAckAll.style.display = 'inline-flex';
+      } else {
+        btnAckAll.style.display = 'none';
+      }
+    }
+
+    // Apply active filter if any
+    if (typeof window._currentFimEventFilter !== 'undefined' && window._currentFimEventFilter !== 'all') {
+      const rows = tblEvents.querySelectorAll('tbody tr:not(.empty-msg)');
+      rows.forEach(tr => {
+        const rowStatus = tr.getAttribute('data-lifecycle-status') || '';
+        if (rowStatus === window._currentFimEventFilter) {
+          tr.style.display = '';
+        } else {
+          tr.style.display = 'none';
+        }
+      });
+    }
+
     if (typeof _servicesTabPagination !== 'undefined' && _servicesTabPagination['fim-events']) {
       _servicesTabPagination['fim-events'].update();
     } else if (typeof attachTablePagination === 'function') {

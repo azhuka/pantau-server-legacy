@@ -310,6 +310,17 @@ def migrate_fim_system() -> None:
     existing_tables = set(inspector.get_table_names())
     if "fim_paths" in existing_tables:
         logger.info("[startup] Tabel fim_paths dan fim_events siap")
+
+        if "fim_events" in existing_tables:
+            fim_ev_cols = {c["name"] for c in inspector.get_columns("fim_events")}
+            with engine.begin() as conn:
+                if "acknowledged_at" not in fim_ev_cols:
+                    conn.execute(text("ALTER TABLE fim_events ADD COLUMN acknowledged_at DATETIME NULL"))
+                    logger.info("[startup] Menambahkan kolom acknowledged_at pada fim_events")
+                if "acknowledged_by" not in fim_ev_cols:
+                    conn.execute(text("ALTER TABLE fim_events ADD COLUMN acknowledged_by VARCHAR(100) NULL"))
+                    logger.info("[startup] Menambahkan kolom acknowledged_by pada fim_events")
+
         db = SessionLocal()
         try:
             servers = db.query(Server).all()
