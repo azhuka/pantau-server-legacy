@@ -18,6 +18,7 @@ engine = create_engine(
     pool_timeout=settings.POOL_TIMEOUT,
     pool_recycle=settings.POOL_RECYCLE,
     pool_pre_ping=True,
+    isolation_level="READ COMMITTED",
 )
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)

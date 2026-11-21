@@ -354,6 +354,17 @@ Grafik riwayat kinerja 24h, 7d, atau 30d menggunakan downsampling SQL adaptif di
 
 # Bagian II: Catatan Riwayat Perubahan Versi (Changelog)
 
+## Versi 4.11.27
+
+### Perbaikan Sistem & Performa (v4.11.27)
+- **Optimasi Indeks Basis Data**: Menghapus indeks tunggal timestamp pada tabel metrics yang menyebabkan scan mundur 9,15 juta baris pada MariaDB optimizer (latensi query turun drastis dari 47 detik ke 11 milidetik).
+- **Indeks Komposit Insiden**: Menambahkan indeks komposit pada server_problems (idx_problems_srv_started dan idx_problems_srv_key_open) untuk mempercepat agregasi 24 jam dan pengecekan insiden aktif.
+- **Pencegahan Alarm Flapping**: Menaikkan OFFLINE_AFTER_SECONDS dari 15 detik menjadi 60 detik (12x toleransi interval heartbeat) guna mencegah sirene alarm palsu saat terjadi jitter jaringan sementara.
+- **Filter Port Ephemeral & Alat Pengembang**: Mencegah proses developer tools (opencode, agy, antigravity) atau port dinamis non-systemd (>= 32768) terdaftar sebagai service sistem yang memicu alarm saat proses ditutup.
+- **Isolasi READ COMMITTED**: Mencegah gap-locking pada transaksi InnoDB saat pembaruan telemetri paralel dari armada agen.
+- **Pemangkasan Otomatis (Auto-Retention)**: Pembersihan metrik kedaluwarsa (> 7 hari) dan riwayat insiden transien secara bertahap (chunked batching) untuk menjaga kesehatan storage database.
+
+
 ## Versi 4.11.26
 
 - Skala Tipografi Dasbor 100%: Hostname 14.5px bold, baris data 13px, KPI cards 22px tegas, LED gauge meter baterai 72px presisi.

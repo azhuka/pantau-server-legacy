@@ -426,6 +426,8 @@ class ServerProblem(Base):
     __table_args__ = (
         Index("idx_problems_open", "server_id", "resolved_at"),
         Index("idx_problems_probe", "probe_id", "resolved_at"),
+        Index("idx_problems_srv_started", "server_id", "started_at"),
+        Index("idx_problems_srv_key_open", "server_id", "key", "resolved_at"),
     )
 
 

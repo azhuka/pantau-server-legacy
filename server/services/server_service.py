@@ -13,7 +13,7 @@ try:
 except ImportError:
     from server.models import Metric, Server, Service, ServerProblem, Command, AuditLog, FIMEvent, ServerExtras
 
-OFFLINE_AFTER_SECONDS = 15
+OFFLINE_AFTER_SECONDS = 60  # Default 60 detik (12x interval agen 5s) untuk mencegah false alarm flapping
 
 _UPTIME_CACHE_TTL = 60.0  # 1 menit cache in-memory
 _uptime_stats_cache: dict[tuple[int, int], tuple[float, dict]] = {}
@@ -138,18 +138,20 @@ def _server_status(
 
 
 def _latest_metrics(db: Session, service_ids) -> Dict[int, Metric]:
-    """Satu query SQL utk metric terbaru per service (hindari N+1)."""
+    """Satu query SQL utk metric terbaru per service (hindari N+1, dipaksa menggunakan idx_metrics_service_ts)."""
     sids = list(service_ids)
     if not sids:
         return {}
     sub = (
         db.query(Metric.service_id.label("service_id"), func.max(Metric.timestamp).label("max_ts"))
+        .with_hint(Metric, "USE INDEX (idx_metrics_service_ts)", "mysql")
         .filter(Metric.service_id.in_(sids))
         .group_by(Metric.service_id)
         .subquery()
     )
     rows = (
         db.query(Metric)
+        .with_hint(Metric, "USE INDEX (idx_metrics_service_ts)", "mysql")
         .join(sub, (Metric.service_id == sub.c.service_id) & (Metric.timestamp == sub.c.max_ts))
         .all()
     )

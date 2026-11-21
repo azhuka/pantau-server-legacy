@@ -423,7 +423,7 @@ def agent_report(
         process_name = _clean_str(svc.get("process_name"), "", 100)
         low_svc = service_name.lower()
         low_proc = process_name.lower() if process_name else ""
-        if any(ign in low_svc or ign in low_proc for ign in ("chrome", "chromedriver", "chromium", "selenium", "playwright", "pytest")):
+        if any(ign in low_svc or ign in low_proc for ign in ("chrome", "chromedriver", "chromium", "selenium", "playwright", "pytest", "opencode", "agy", "antigravity")):
             continue
         status = svc.get("status", "down")
         if status not in ("up", "down"):
@@ -472,7 +472,9 @@ def agent_report(
 
         # Ambil status metrik terakhir sebelum menambahkan metrik baru
         last_m = (
-            db.query(Metric).filter(Metric.service_id == service.id)
+            db.query(Metric)
+            .with_hint(Metric, "USE INDEX (idx_metrics_service_ts)", "mysql")
+            .filter(Metric.service_id == service.id)
             .order_by(desc(Metric.timestamp)).first()
         )
         prev_status = last_m.status if last_m else None
@@ -543,7 +545,9 @@ def agent_report(
             continue
         # Cek status terakhir, jangan insert duplikat kalau sudah down
         last = (
-            db.query(Metric).filter(Metric.service_id == svc.id)
+            db.query(Metric)
+            .with_hint(Metric, "USE INDEX (idx_metrics_service_ts)", "mysql")
+            .filter(Metric.service_id == svc.id)
             .order_by(desc(Metric.timestamp)).first()
         )
         if not last or last.status == "up":

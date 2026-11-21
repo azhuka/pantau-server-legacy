@@ -1290,21 +1290,21 @@ def _problem_instances(srv, extras, svc_data, db=None, failed_excerpts=None) -> 
             stale_tip = f"Server sedang dalam proses mulai ulang (reboot) yang diinisiasi oleh operator ({op_by})."
         elif is_prod:
             # Server Produksi (Layanan Vital 24/7):
-            # - Detik awal (> 15s) s/d 1 menit (< 60s): Average (GAWAT)
-            # - >= 60s (1 menit): Danger (KRITIS — Memicu sirene darurat, badge & banner merah)
-            dur_txt = f"{int(sec_silent // 60)} mnt" if sec_silent >= 60 else f"{int(sec_silent)} dtk"
-            if sec_silent >= 60:
+            # - Detik awal (>= 60s) s/d 3 menit (< 180s): Average (GAWAT)
+            # - >= 180s (3 menit): Danger (KRITIS — Memicu sirene darurat, badge & banner merah)
+            dur_txt = f"{max(1, int(sec_silent // 60))} mnt"
+            if sec_silent >= 180:
                 stale_sev = "danger"
                 stale_msg = f"Agen tidak melapor (> {dur_txt}) — SERVER OFFLINE"
                 stale_tip = "SEGERA lakukan inspeksi fisik atau virtual mesin server Produksi, periksa suplai daya, dan verifikasi konektivitas jaringan."
             else:
                 stale_sev = "average"
-                stale_msg = f"Agen tidak melapor (> {int(sec_silent)} dtk)"
+                stale_msg = f"Agen tidak melapor (> {dur_txt})"
                 stale_tip = "Periksa suplai daya server, koneksi jaringan, atau status service agent_pantau."
         else:
             # Server Non-Produksi (Lab / Pengujian / Uji Coba / Kloning / Dev):
             # - Selalu masuk Warning (Peringatan). Tenang tanpa sirene darurat / banner merah.
-            dur_txt = f"{int(sec_silent // 60)} mnt" if sec_silent >= 60 else f"{int(sec_silent)} dtk"
+            dur_txt = f"{max(1, int(sec_silent // 60))} mnt"
             stale_sev = "warning"
             stale_msg = f"Agen tidak melapor (> {dur_txt})"
             stale_tip = "Server non-produksi (lab/pengujian) sedang tidak aktif atau agent_pantau belum berjalan."
@@ -2575,11 +2575,16 @@ def sync_server_problems(db, srv, instances, keep_history=40, now=None):
                     key=lambda x: PROBLEM_RANK.get(x, 0))
     cutoff_24 = now - timedelta(hours=24)
     counts: dict = {}
-    for r in db.query(ServerProblem).filter(
-        ServerProblem.server_id == srv.id,
-        ServerProblem.started_at >= cutoff_24,
-    ).all():
-        counts[r.key] = counts.get(r.key, 0) + 1
+    for k, cnt in (
+        db.query(ServerProblem.key, func.count(ServerProblem.id))
+        .filter(
+            ServerProblem.server_id == srv.id,
+            ServerProblem.started_at >= cutoff_24,
+        )
+        .group_by(ServerProblem.key)
+        .all()
+    ):
+        counts[k] = cnt
     open_list = [_problem_row2dict(r) for r in open_rows]
     hist_list = [_problem_row2dict(r) for r in history]
     for d in open_list + hist_list:
@@ -2672,11 +2677,16 @@ def problems_aggregate(
                 d["status"] = "offline"
         sync_server_problems(db, srv, _problem_instances(srv, ex, svc_data, db))
         counts = {}
-        for r in db.query(ServerProblem).filter(
-            ServerProblem.server_id == srv.id,
-            ServerProblem.started_at >= cutoff_24,
-        ).all():
-            counts[r.key] = counts.get(r.key, 0) + 1
+        for k, cnt in (
+            db.query(ServerProblem.key, func.count(ServerProblem.id))
+            .filter(
+                ServerProblem.server_id == srv.id,
+                ServerProblem.started_at >= cutoff_24,
+            )
+            .group_by(ServerProblem.key)
+            .all()
+        ):
+            counts[k] = cnt
         seen_open_keys = set()
         for r in db.query(ServerProblem).filter(
             ServerProblem.server_id == srv.id,
@@ -2855,6 +2865,24 @@ def _retention_prune(db: Session) -> None:
         ServerProblem.resolved_at < now - timedelta(days=_RETENTION_LIMITS["resolved_problems_days"]),
         (ServerProblem.is_ignored == 0) | (ServerProblem.is_ignored.is_(None)) | (ServerProblem.ignore_mode != "permanent"),
     ).delete(synchronize_session=False)
+
+    # Pangkas metrics lama (> 7 hari) secara bertahap dalam batch untuk menjaga performa
+    mcut = now - timedelta(days=7)
+    for _ in range(50):
+        del_cnt = db.execute(
+            text("DELETE FROM metrics WHERE timestamp < :cutoff LIMIT 10000"),
+            {"cutoff": mcut}
+        ).rowcount
+        db.commit()
+        if del_cnt < 10000:
+            break
+
+    # Pangkas insiden teratasi yang bersifat transien (auto/dedup/pemulihan) > 7 hari
+    pcut = now - timedelta(days=7)
+    db.execute(
+        text("DELETE FROM server_problems WHERE resolved_at IS NOT NULL AND resolved_at < :pcut AND resolved_note IN ('duplicate_cleanup', 'auto', 'server_online', 'service_up')"),
+        {"pcut": pcut}
+    )
     db.commit()
 
 

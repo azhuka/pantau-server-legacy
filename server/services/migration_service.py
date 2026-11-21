@@ -404,8 +404,50 @@ def migrate_user_server_scope() -> None:
             db.close()
 
 
+def migrate_performance_indexes() -> None:
+    """Migrasi indeks performa tinggi: hapus indeks timestamp standalone yang merusak optimizer MySQL,
+    serta pastikan indeks komposit pada server_problems terpasang."""
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    db = SessionLocal()
+    try:
+        if "metrics" in existing_tables:
+            metric_indexes = {ix["name"] for ix in inspector.get_indexes("metrics")}
+            if "idx_metrics_timestamp" in metric_indexes:
+                try:
+                    db.execute(text("ALTER TABLE metrics DROP INDEX idx_metrics_timestamp"))
+                    db.commit()
+                    logger.info("[startup] Berhasil menghapus idx_metrics_timestamp untuk mencegah regresi optimizer MySQL")
+                except Exception as e:
+                    db.rollback()
+                    logger.warning("[startup] Gagal menghapus idx_metrics_timestamp: %s", e)
+
+        if "server_problems" in existing_tables:
+            prob_indexes = {ix["name"] for ix in inspector.get_indexes("server_problems")}
+            if "idx_problems_srv_started" not in prob_indexes:
+                try:
+                    db.execute(text("ALTER TABLE server_problems ADD INDEX idx_problems_srv_started (server_id, started_at)"))
+                    db.commit()
+                    logger.info("[startup] Indeks idx_problems_srv_started berhasil ditambahkan")
+                except Exception as e:
+                    db.rollback()
+                    logger.warning("[startup] Gagal menambah idx_problems_srv_started: %s", e)
+
+            if "idx_problems_srv_key_open" not in prob_indexes:
+                try:
+                    db.execute(text("ALTER TABLE server_problems ADD INDEX idx_problems_srv_key_open (server_id, `key`, resolved_at)"))
+                    db.commit()
+                    logger.info("[startup] Indeks idx_problems_srv_key_open berhasil ditambahkan")
+                except Exception as e:
+                    db.rollback()
+                    logger.warning("[startup] Gagal menambah idx_problems_srv_key_open: %s", e)
+    finally:
+        db.close()
+
+
 def run_all_migrations() -> None:
     """Jalankan semua migrasi schema saat server startup."""
+    migrate_performance_indexes()
     migrate_server_groups_and_thresholds()
     migrate_server_extras_specs()
     migrate_server_problem_ignored()

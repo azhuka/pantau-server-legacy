@@ -944,6 +944,7 @@ def api_service_history(
 
     latest = (
         db.query(Metric)
+        .with_hint(Metric, "USE INDEX (idx_metrics_service_ts)", "mysql")
         .filter(Metric.service_id == svc_id)
         .order_by(desc(Metric.timestamp))
         .first()

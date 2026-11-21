@@ -159,6 +159,7 @@ def get_process_path(pid: int) -> str:
 DEV_TOOL_NAME_HINTS = (
     "mainthread", "code-", "vscode", "electron", "jupyter",
     "chrome", "chromedriver", "google-chrome", "chromium", "selenium", "playwright", "pytest",
+    "opencode", "agy", "antigravity",
 )
 
 
@@ -262,6 +263,8 @@ def parse_ss_listening() -> list[dict]:
         if is_dev_tool(proc_name, pid):
             continue
 
+        unit_name = get_systemd_unit_from_pid(pid)
+        socket_svc = None
         if not proc_name:
             socket_svc = get_systemd_socket_service(port)
             if socket_svc:
@@ -269,11 +272,10 @@ def parse_ss_listening() -> list[dict]:
             else:
                 proc_name = f"port-{port}"
 
-        if port >= EPHEMERAL_START and not proc_match:
+        # Abaikan port ephemeral (>= 32768) jika bukan unit service systemd resmi
+        if port >= EPHEMERAL_START and not unit_name and not socket_svc:
             continue
 
-        # Cek unit systemd nyata dari PID cgroup untuk akurasi maksimal
-        unit_name = get_systemd_unit_from_pid(pid)
         if unit_name:
             proc_name = normalize_process_name(unit_name)
         else:
@@ -489,7 +491,7 @@ SHELL_IDLE_POLL_SECS = 0.15            # jeda antar-pendelikan stdin dari dashbo
 SHELL_POST_MIN_SECS = 0.12
 
 # Versi agen, dikirim ke dashboard di tiap laporan (badge "agen vX.Y").
-AGENT_VERSION = "4.11.26"
+AGENT_VERSION = "4.11.27"
 
 
 def tcp_health_check(port: int, addr: str) -> dict:
