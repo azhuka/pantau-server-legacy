@@ -195,7 +195,11 @@ else
 fi
 chmod 440 "$TMP_SD"
 if ! visudo -c -f "$TMP_SD" >/dev/null 2>&1; then
-    rm -f "$TMP_SD"; echo "[ERROR] Sudoers tidak lolos visudo — batal."; exit 1
+    # sudo-rs (Ubuntu 25.10+) tidak mendukung setting 'requiretty' (sudah non-requiretty secara bawaan)
+    sed -i '/^Defaults:pantau !requiretty$/d' "$TMP_SD"
+    if ! visudo -c -f "$TMP_SD"; then
+        rm -f "$TMP_SD"; echo "[ERROR] Sudoers tidak lolos visudo — batal."; exit 1
+    fi
 fi
 install -o root -g root -m 440 "$TMP_SD" /etc/sudoers.d/pantau-agent
 rm -f "$TMP_SD"
