@@ -60,7 +60,7 @@ fi
 # --- 2. Salin kode aplikasi ---
 mkdir -p "$APP_DIR"
 rsync -a --delete \
-    --exclude '__pycache__' --exclude '*.pyc' --exclude 'env' --exclude '.env' \
+    --exclude '__pycache__' --exclude '*.pyc' --exclude 'env' --exclude '.env' --exclude 'static/uploads' \
     "$SRC/server/" "$APP_DIR/"
 install -d -o "$APP_USER" -g "$APP_USER" -m 755 "$APP_DIR"
 echo "[OK]   Kode web app -> $APP_DIR"
@@ -100,10 +100,11 @@ FLUSH PRIVILEGES;
 SQL
 echo "[OK]   Database ${DB_NAME} + user ${DB_USER} siap"
 
-# --- 5. .env (rahasia; tulis dengan umask ketat biar tak pernah kebaca user lain) ---
-TMP_ENV="$(mktemp)"
-umask 077
-cat > "$TMP_ENV" <<EOF
+# --- 5. .env (rahasia; tulis hanya jika belum ada agar konfigurasi kustom tidak tertimpa) ---
+if [[ ! -f "$APP_DIR/.env" ]]; then
+    TMP_ENV="$(mktemp)"
+    umask 077
+    cat > "$TMP_ENV" <<EOF
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USER=${DB_USER}
@@ -112,9 +113,12 @@ DB_NAME=${DB_NAME}
 SERVER_HOST=0.0.0.0
 SERVER_PORT=${APP_PORT}
 EOF
-install -o "$APP_USER" -g "$APP_USER" -m 640 "$TMP_ENV" "$APP_DIR/.env"
-rm -f "$TMP_ENV"
-echo "[OK]   Konfigurasi -> $APP_DIR/.env (rahasia, mode 640)"
+    install -o "$APP_USER" -g "$APP_USER" -m 640 "$TMP_ENV" "$APP_DIR/.env"
+    rm -f "$TMP_ENV"
+    echo "[OK]   Konfigurasi -> $APP_DIR/.env (rahasia, mode 640)"
+else
+    echo "[SKIP] Konfigurasi $APP_DIR/.env sudah ada (dipertahankan)"
+fi
 
 # --- 6. Systemd ---
 install -o root -g root -m 644 "$APP_DIR/pantau-server.service" \
@@ -139,6 +143,7 @@ done
 # --- 7. Akun admin ---
 ADMIN_USER="${ADMIN_USER:-admin}"
 if [[ -z "${ADMIN_PASS:-}" ]]; then
+    echo "  Syarat password: min. 12 karakter (huruf besar, huruf kecil, angka, simbol)."
     read -rsp "  Password untuk user '$ADMIN_USER': " ADMIN_PASS
     echo
     [[ -n "$ADMIN_PASS" ]] || { echo "[ERROR] password kosong." >&2; exit 1; }
@@ -157,7 +162,7 @@ echo '  Langkah selanjutnya:'
 echo '   1) Buka dashboard, menu Server -> Tambah Server -> simpan API key.'
 echo '   2) Di tiap mesin yang mau dipantau, SATU file saja:'
 echo "        sudo curl -fsSL -o /tmp/pantau-install.sh \\"
-echo "          https://raw.githubusercontent.com/azhuka/pantau-server/master/package/install.sh"
+echo "          https://raw.githubusercontent.com/azhuka/pantau-server-legacy/master/package/install.sh"
 echo '        sudo bash /tmp/pantau-install.sh'
 echo '        (akan diminta alamat dashboard ini + API key tsb)'
 echo '   3) Backups:  mysqldump pantau_db > backup.sql'

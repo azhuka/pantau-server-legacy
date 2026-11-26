@@ -77,9 +77,9 @@ Pantau-Server mengadopsi model **Outbound-Only Pull**. Agen klien yang aktif men
 ## Persiapan & Prasyarat Sistem
 
 ### Sisi Server Pusat (Dashboard)
-- **Sistem Operasi:** Ubuntu 20.04 / 22.04 / 24.04 LTS atau Debian 11 / 12 (arsitektur x86_64 / amd64).
+- **Sistem Operasi:** Ubuntu 20.04 / 22.04 / 24.04+ LTS atau Debian 11 / 12+ (arsitektur x86_64 / amd64).
 - **Spesifikasi Minimum:** 1 vCPU, RAM 1 GB, Disk kosong 5 GB.
-- **Dependensi Sistem:** Python 3.10+, MariaDB Server, Git, Curl.
+- **Dependensi Sistem:** Python 3.10+ (`python3-venv`, `python3-pip`), MariaDB Server, Git, Curl, Rsync, OpenSSL.
 - **Port Jaringan:** Port `8400` TCP terbuka untuk akses dashboard dan komunikasi masuk dari agent klien (bisa dialihkan ke port `80`/`443` via reverse proxy Nginx).
 
 ### Sisi Server Klien (Agent)
@@ -101,20 +101,24 @@ Pantau-Server mengadopsi model **Outbound-Only Pull**. Agen klien yang aktif men
 Jalankan di server pusat yang akan dijadikan dashboard monitoring:
 
 ```bash
+# 0. Pasang dependensi sistem (Ubuntu/Debian)
+sudo apt update && sudo apt install -y python3 python3-venv python3-pip mariadb-server git curl rsync openssl
+
 # 1. Clone repositori Pantau-Server
-git clone https://github.com/azhuka/pantau-server.git
-cd pantau-server
+git clone https://github.com/azhuka/pantau-server-legacy.git
+cd pantau-server-legacy
 
 # 2. Jalankan skrip installer interaktif
 sudo bash install-server.sh
 ```
 
 Skrip installer akan secara otomatis:
-- Menyiapkan user sistem `pantau` dan virtual environment Python.
-- Memasang dependensi backend dan menginisialisasi database MariaDB.
+- Menyiapkan user sistem `pantau-server` dan menyalin aplikasi ke `/opt/pantau/server/`.
+- Membuat virtual environment Python (`/opt/pantau/server/env`) serta memasang dependensi dari `server/requirements.txt`.
+- Menginisialisasi database MariaDB (`pantau_db`) dan user database (`pantau_dash`), serta menulis `/opt/pantau/server/.env`.
 - Memasang serta mengaktifkan service systemd `pantau-server.service`.
-- Meminta kata sandi awal untuk akun `admin`.
-- Akun ini akan menjadi satu-satunya akun yang aktif dan berperan sebagai akun utama (root/master-admin).
+- Meminta kata sandi awal untuk akun `admin` (minimal **12 karakter**, kombinasi huruf besar, huruf kecil, angka, dan simbol khusus).
+- Akun ini berperan sebagai akun utama (`master_admin`).
 
 Setelah instalasi selesai, buka dashboard melalui peramban:
 - **URL Dashboard:** `http://<IP-SERVER-PUSAT>:8400`
@@ -134,7 +138,7 @@ Setelah dashboard aktif, daftarkan server klien dengan langkah berikut:
 
 ```bash
 sudo curl -fsSL -o /tmp/pantau-install.sh \
-  https://raw.githubusercontent.com/azhuka/pantau-server/master/package/install.sh
+  https://raw.githubusercontent.com/azhuka/pantau-server-legacy/master/package/install.sh
 sudo bash /tmp/pantau-install.sh
 ```
 
@@ -169,8 +173,8 @@ sudo journalctl -u pantau-server -f
 sudo /opt/pantau/server/env/bin/python /opt/pantau/server/seed_admin.py \
   --username admin --role admin --password 'password-baru'
 
-# Memperbarui aplikasi dashboard ke versi terbaru
-cd /opt/pantau/server/pantau-server
+# Memperbarui aplikasi dashboard ke versi terbaru (dari folder hasil git clone)
+cd ~/pantau-server-legacy
 git pull && sudo bash install-server.sh
 ```
 
@@ -187,6 +191,29 @@ sudo systemctl restart agent_pantau.service
 
 # Lokasi berkas konfigurasi agent
 sudo cat /etc/pantau/config.json
+```
+
+---
+
+## Struktur Direktori Repositori
+
+```text
+pantau-server-legacy/
+├── install-server.sh       # Installer otomatis dashboard server pusat -> /opt/pantau/server
+├── server/                 # Aplikasi web FastAPI, template Jinja2, static, router, dan services
+│   ├── main.py             # Entrypoint aplikasi FastAPI
+│   ├── requirements.txt    # Dependensi Python server pusat
+│   ├── seed_admin.py       # Utilitas pembuatan/reset akun & 2FA
+│   └── pantau-server.service
+├── agent/                  # Sumber agen klien mandiri (zero-dependency Python 3.10+)
+├── package/                # Paket instalasi agen klien standalone
+│   ├── install.sh          # Skrip installer satu-langkah untuk server klien
+│   ├── opt/pantau/agent/   # Salinan agen untuk distribusi & OTA
+│   ├── etc/                # Konfigurasi systemd, sudoers, logrotate, env
+│   └── usr/local/sbin/     # Sudo wrapper scripts terbatas (pantau-*)
+├── deploy/                 # Contoh konfigurasi produksi (Nginx reverse proxy & logrotate)
+├── database/               # Skema SQL referensi & seed contoh
+└── tools/                  # Skrip otomasi rilis (sop_release.py)
 ```
 
 ---

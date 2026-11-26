@@ -9,7 +9,7 @@
 #
 #   cara B — tanpa folder sama sekali (unduh SATU file ini, lalu jalankan):
 #       sudo curl -fsSL -o /tmp/pantau-install.sh \
-#         https://raw.githubusercontent.com/azhuka/pantau-server/master/package/install.sh
+#         https://raw.githubusercontent.com/azhuka/pantau-server-legacy/master/package/install.sh
 #       sudo bash /tmp/pantau-install.sh
 #
 # Yang dilakukan, berurutan:
@@ -30,7 +30,7 @@
 #   SETUP_SERVER_URL=... SETUP_API_KEY=... sudo bash install.sh
 set -u
 
-BASE_URL="https://raw.githubusercontent.com/azhuka/pantau-server/master/package"
+BASE_URL="https://raw.githubusercontent.com/azhuka/pantau-server-legacy/master/package"
 
 if [[ $EUID -ne 0 ]]; then
     echo "Jalankan sebagai root: sudo bash $0"

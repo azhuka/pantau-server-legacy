@@ -301,8 +301,6 @@ def server_add_submit(
     user = get_current_user(request, db)
     if not user or not (user.is_master_admin() or user.has_perm("can_manage_servers")):
         return RedirectResponse("/", status_code=303)
-    if not user.can_access_server(sid):
-        return RedirectResponse("/servers", status_code=303)
     _verify_csrf_form(request, csrf_token)
     hostname = _clean_str(hostname, "", 255)
     ip_address = _clean_str(ip_address, "", 45)[:45]
